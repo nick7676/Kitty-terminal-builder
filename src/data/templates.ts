@@ -1,0 +1,15 @@
+export const fileTemplates: Record<string, string> = {
+  'open-actions.conf': '# Open clicked files and URLs\nprotocol file\nmime text/*\naction launch --type=overlay $EDITOR $FILE_PATH\n',
+  'launch-actions.conf': '# Handle launched files\nprotocol file\nmime text/*\naction launch --type=os-window $EDITOR $FILE_PATH\n',
+  'ssh.conf': '# SSH kitten configuration\n# hostname example.com\n# remote_dir /tmp/kitty-ssh-kitten\n',
+  'diff.conf': '# kitty-diff configuration\nsyntax_aliases py:python\n',
+  'sessions/workspace.session': '# Kitty session\nnew_tab Workspace\nlayout splits\nlaunch --cwd=current\n',
+  'profiles/work.conf': '# Modular kitty profile\n# This file is included from kitty.conf\n',
+  'themes/custom.conf': '# Custom theme\nforeground #dddddd\nbackground #000000\n',
+  'shaders/custom.slang': '// Kitty Slang shader\nvec4 mainImage(vec4 color, vec2 fragCoord) {\n    return color;\n}\n',
+  'shaders/custom.pipeline': '# Shader pipeline\nshader custom.slang\n',
+  'tab_bar.py': 'from kitty.tab_bar import DrawData, ExtraData, TabBarData\n\n\ndef draw_tab(draw_data: DrawData, screen, tab: TabBarData, before: int, max_title_length: int, index: int, is_last: bool, extra_data: ExtraData) -> int:\n    screen.draw(tab.title)\n    return screen.cursor.x\n',
+  'window_title_bar.py': '# Custom window title bar\n',
+  'notifications.py': '# Notification filters and handlers\n',
+  'paste-actions.py': '# Paste filtering hooks\n',
+}

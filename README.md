@@ -19,9 +19,10 @@ Native desktop studio for [kitty](https://sw.kovidgoyal.net/kitty/), built with 
 
 - Tauri 2 desktop runtime
 - Rust backend for filesystem and process boundaries
-- Framework-free TypeScript, HTML and CSS frontend
+- React 19 with TanStack Router, Query and Virtual
+- Zustand for workspace state and react-hotkeys-hook for keyboard shortcuts
 
-There is no React, web UI framework, server or generic shell command.
+There is no server and no generic shell command. Package versions are stable releases.
 
 ## Development
 
@@ -32,11 +33,7 @@ npm install
 npm run desktop
 ```
 
-Web UI preview, without filesystem access:
-
-```bash
-npm run dev
-```
+`npm run desktop` opens the native window. React is the interface inside that window, loaded by Tauri during development and packaged into the app for distribution.
 
 ## Verification
 

@@ -101,7 +101,12 @@ h2 { font-size: 16px; }
 .section-link:hover, .section-link.active { color: var(--text); background: var(--panel-2); }
 .section-link.active { color: #e5c9f5; box-shadow: inset 2px 0 var(--primary); }
 .section-link span { opacity: .5; }
-.options-pane { min-width: 0; overflow-y: auto; }
+.options-pane { display: flex; min-width: 0; flex-direction: column; overflow: hidden; }
+.options-scroll { flex: 1; overflow-y: auto; }
+.options-virtual { position: relative; max-width: 900px; }
+.template-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-bottom: 13px; }
+.help-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: #0008; }
+.help-panel { width: min(420px, calc(100vw - 40px)); }
 .options-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: 18px 25px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(15px); }
 .options-head h1 { margin: 3px 0 0; font-size: 19px; }
 .options-list { display: grid; gap: 10px; max-width: 900px; padding: 20px 25px 50px; }
@@ -122,14 +127,14 @@ h2 { font-size: 16px; }
 .tag { display: inline-flex; padding: 3px 7px; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); font-size: 8px; }
 .tag.active { border-color: #65c18c44; color: var(--success); background: #65c18c11; }
 
-.files-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: calc(100vh - 64px); }
-.file-panel { padding: 15px; border-right: 1px solid var(--border); background: #111015; }
+.files-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); height: calc(100vh - 64px); overflow: hidden; }
+.file-panel { overflow: auto; padding: 15px; border-right: 1px solid var(--border); background: #111015; }
 .panel-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .panel-title b { font-size: 12px; }
 .file-button { width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); text-align: left; font-size: 10px; }
 .file-button:hover, .file-button.active { background: var(--panel-2); color: var(--text); }
 .file-button span { overflow: hidden; text-overflow: ellipsis; }
-.editor-pane { padding: 22px; min-width: 0; }
+.editor-pane { overflow: auto; padding: 22px; min-width: 0; }
 .editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 14px; }
 .editor-toolbar h1 { margin: 0; font: 600 18px monospace; }
 .toolbar-actions { display: flex; gap: 7px; }
