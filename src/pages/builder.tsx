@@ -1,8 +1,10 @@
-import { useEffect } from 'react'
-import { isTauri } from '../core/tauri'
-import { valuesOf } from '../core/document'
+import { useEffect, useRef, useState } from 'react'
+import tabBarPy from '../../scripts/studio-tab-bar.py?raw'
+import { backend, isTauri } from '../core/tauri'
+import { envValue, removeEnv, setValue, upsertEnv, valuesOf } from '../core/document'
 import {
-  ansiSlots, blinkChoices, cssColor, cursorShapes, fontChoices, presets, styleKeys, surfaceSlots, tabStyles, themeKeys,
+  activeLayout, ansiSlots, blinkChoices, cssColor, cursorShapes, fontChoices, imageLayouts, kittyString, layoutOrder,
+  plainPath, presets, scenes, styleKeys, surfaceSlots, tabStyles, themeKeys, windowLayouts,
 } from '../data/appearance'
 import { isDirtyState, useWorkspace } from '../store/workspace'
 
@@ -12,21 +14,29 @@ function useOption(key: string, fallback: string) {
   return { raw, effective: raw.trim() ? raw : fallback }
 }
 
-function TerminalPreview() {
+function imageFit(layout: string) {
+  if (layout === 'centered' || layout === 'clamped') return 'contain'
+  if (layout === 'tiled' || layout === 'mirror-tiled') return 'tile'
+  return 'cover'
+}
+
+function TerminalPreview({ imageUrl, paneUrl }: { imageUrl: string; paneUrl: string }) {
   const background = useOption('background', '#000000')
   const foreground = useOption('foreground', '#dddddd')
   const cursor = useOption('cursor', '#cccccc')
-  const cursorText = useOption('cursor_text_color', '#111111')
-  const selection = useOption('selection_background', '#fffacd')
-  const selectionText = useOption('selection_foreground', '#000000')
-  const font = useOption('font_family', 'monospace')
-  const size = useOption('font_size', '11')
   const shape = useOption('cursor_shape', 'block')
   const blink = useOption('cursor_blink_interval', '-1')
+  const font = useOption('font_family', 'monospace')
+  const size = useOption('font_size', '11')
   const opacity = useOption('background_opacity', '1')
   const blur = useOption('background_blur', '0')
+  const tint = useOption('background_tint', '0')
   const padding = useOption('window_padding_width', '0')
   const tabStyle = useOption('tab_bar_style', 'fade')
+  const tabEdge = useOption('tab_bar_edge', 'bottom')
+  const decorations = useOption('hide_window_decorations', 'no')
+  const imageLayout = useOption('background_image_layout', 'tiled')
+  const layouts = useOption('enabled_layouts', 'tall')
   const activeTab = useOption('active_tab_background', '#eeeeee')
   const activeTabText = useOption('active_tab_foreground', '#000000')
   const inactiveTab = useOption('inactive_tab_background', '#999999')
@@ -36,27 +46,28 @@ function TerminalPreview() {
   const ansi = ansiSlots.map(([key, label]) => {
     const raw = valuesOf(document, key).at(-1) ?? ''
     const fallback = classic[key] ?? '#888888'
-    return { key, label, raw, effective: raw.trim() ? raw : fallback }
+    return { key, label, effective: raw.trim() ? raw : fallback }
   })
   const color = (slot: string, fallback: string) => cssColor(ansi.find((item) => item.key === slot)?.effective, fallback)
-  const pad = Number.parseFloat(padding.effective) || 0
-  const fontSize = Math.min(22, Math.max(11, Number.parseFloat(size.effective) || 13))
-  const hiddenTabs = tabStyle.effective === 'hidden'
+  const layout = activeLayout(layouts.effective)
+  const fontSize = Math.min(18, Math.max(11, Number.parseFloat(size.effective) || 13))
+  const hiddenTabs = tabStyle.effective === 'hidden' || (layout === 'stack' && tabStyle.effective !== 'custom')
+  const textTabs = tabStyle.effective === 'custom' || tabStyle.effective === 'fade' || tabStyle.effective === 'separator'
+  const art = Boolean(imageUrl)
+  const caret = `caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`
 
   return (
     <div className="preview-stage">
       <div
-        className={`term style-${tabStyle.effective}`}
+        className={`term style-${tabStyle.effective} edge-${tabEdge.effective} ${decorations.effective === 'yes' ? 'frameless' : ''} ${art ? 'has-art' : ''} fit-${imageFit(imageLayout.effective)}`}
         style={{
           ['--term-bg' as string]: cssColor(background.effective, '#000000'),
           ['--term-fg' as string]: cssColor(foreground.effective, '#dddddd'),
           ['--term-cursor' as string]: cssColor(cursor.effective, '#cccccc'),
-          ['--term-cursor-text' as string]: cssColor(cursorText.effective, '#111111'),
-          ['--term-selection' as string]: cssColor(selection.effective, '#fffacd'),
-          ['--term-selection-text' as string]: cssColor(selectionText.effective, '#000000'),
-          ['--term-opacity' as string]: String(Math.min(1, Math.max(0.15, Number.parseFloat(opacity.effective) || 1))),
+          ['--term-opacity' as string]: String(Math.min(1, Math.max(0.2, Number.parseFloat(opacity.effective) || 1))),
           ['--term-blur' as string]: `${Math.max(0, Number.parseFloat(blur.effective) || 0)}px`,
-          ['--term-pad' as string]: `${Math.min(48, Math.max(0, pad))}px`,
+          ['--term-tint' as string]: String(Math.min(0.85, Math.max(0, Number.parseFloat(tint.effective) || 0))),
+          ['--term-pad' as string]: `${Math.min(28, Math.max(4, Number.parseFloat(padding.effective) || 8))}px`,
           ['--term-font' as string]: font.effective === 'monospace' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : `"${font.effective}", ui-monospace, monospace`,
           ['--term-size' as string]: `${fontSize}px`,
           ['--tab-active' as string]: cssColor(activeTab.effective, '#eeeeee'),
@@ -72,24 +83,33 @@ function TerminalPreview() {
           ['--ansi-red' as string]: color('color1', '#cc0403'),
         }}
       >
-        <div className="term-chrome"><span /><span /><span /><b>kitty — builder</b></div>
-        {hiddenTabs ? null : (
+        <div className="term-chrome"><span /><span /><span /><b>kitty</b></div>
+        {hiddenTabs ? null : textTabs ? (
+          <div className="term-tabs text">
+            <span className="term-tab active">1 fish</span><span className="sep">·</span>
+            <span className="term-tab">2 dotfiles</span><span className="sep">·</span>
+            <span className="term-tab">3 nvim</span>
+            <span className="tab-badges"><i style={{ background: color('color5', '#c9a6f2') }}>tall</i><i style={{ background: color('color2', '#8fd4b0') }}>studio</i></span>
+          </div>
+        ) : (
           <div className="term-tabs">
-            <span className="term-tab active">main</span>
-            <span className="term-tab">logs</span>
-            <span className="term-tab">ssh</span>
+            <span className="term-tab active">fish</span>
+            <span className="term-tab">dotfiles</span>
+            <span className="term-tab">nvim</span>
           </div>
         )}
-        <div className="term-screen">
-          <p><span className="c-blue">~/config/kitty</span> <span className="c-dim">main</span></p>
-          <p><span className="c-cyan">&gt;</span> git status</p>
-          <p>On branch <span className="c-magenta">main</span></p>
-          <p className="selected">  modified: kitty.conf</p>
-          <p><span className="c-green">  themes/</span> <span className="c-blue">sessions/</span></p>
-          <p><span className="c-cyan">&gt;</span> echo $TERM</p>
-          <p>xterm-kitty<span className={`caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`} /></p>
-          <div className="term-palette">
-            {ansi.slice(0, 16).map((slot) => <i key={slot.key} title={slot.label} style={{ background: cssColor(slot.effective, '#888') }} />)}
+        <div className="term-canvas" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
+          <div className="term-wash" />
+          <div className={`panes layout-${layout}`}>
+            {layout === 'stack' ? <FetchPane dots={ansi} caret={caret} paneUrl={paneUrl} /> : (
+              <>
+                <EditorPane caret={caret} />
+                <PicturePane paneUrl={paneUrl} />
+                {layout === 'horizontal' || layout === 'grid' || layout === 'fat' ? <PromptPane title="ssh" /> : null}
+                {layout === 'grid' ? <PromptPane title="logs" /> : null}
+                {layout === 'tall' || layout === 'vertical' ? <PromptPane title="~/config/fish" /> : null}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -97,12 +117,68 @@ function TerminalPreview() {
   )
 }
 
+function EditorPane({ caret }: { caret: string }) {
+  const lines = [
+    ['c-magenta', 'set -gx EDITOR nvim'],
+    ['c-cyan', 'set fish_color_command brcyan'],
+    ['c-dim', '# greeting pictures via kitty icat'],
+    ['', 'function fish_greeting'],
+    ['c-yellow', '  kitty icat --align=left ~/pictures'],
+    ['', 'end'],
+  ]
+  return (
+    <section className="pane pane-main editor-mock">
+      {lines.map(([tone, text], index) => <p key={text}><span className="ln">{index + 1}</span><span className={tone}>{text}</span></p>)}
+      <p className="prompt-line"><span className="c-green">~/config</span> fish<span className={caret} /></p>
+    </section>
+  )
+}
+
+function PicturePane({ paneUrl }: { paneUrl: string }) {
+  return (
+    <section className="pane">
+      {paneUrl ? <img className="pane-image" alt="" src={paneUrl} /> : <p className="c-dim">$</p>}
+    </section>
+  )
+}
+
+function PromptPane({ title }: { title: string }) {
+  return (
+    <section className="pane">
+      <p className="c-cyan">{title}</p>
+      <p><span className="c-green">$</span> <span className="c-dim">ready</span></p>
+    </section>
+  )
+}
+
+function FetchPane({ dots, caret, paneUrl }: { dots: { key: string; effective: string }[]; caret: string; paneUrl: string }) {
+  const rows = [
+    ['c-red', 'os', 'this machine'],
+    ['c-green', 'wm', 'kitty'],
+    ['c-yellow', 'font', 'monospace'],
+    ['c-blue', 'term', 'xterm-kitty'],
+  ]
+  return (
+    <section className={`pane fetch ${paneUrl ? 'with-image' : ''}`}>
+      {paneUrl ? <img className="pane-image" alt="" src={paneUrl} /> : null}
+      <div>
+        <p><b>builder</b><span className="c-dim">@kitty</span></p>
+        {rows.map(([tone, label, value]) => <p key={label}><span className={tone}>{label}</span> {value}</p>)}
+        <div className="term-palette">{dots.slice(0, 8).map((dot) => <i key={dot.key} style={{ background: cssColor(dot.effective, '#888') }} />)}</div>
+        <p className="prompt-line"><span className="c-cyan">~</span> $<span className={caret} /></p>
+      </div>
+    </section>
+  )
+}
+
 export function BuilderPage() {
   const activeFile = useWorkspace((state) => state.activeFile)
   const document = useWorkspace((state) => state.document)
   const original = useWorkspace((state) => state.original)
+  const status = useWorkspace((state) => state.status)
   const editValue = useWorkspace((state) => state.editValue)
   const applyEntries = useWorkspace((state) => state.applyEntries)
+  const updateDocument = useWorkspace((state) => state.updateDocument)
   const resetKeys = useWorkspace((state) => state.resetKeys)
   const openFile = useWorkspace((state) => state.openFile)
   const discard = useWorkspace((state) => state.discard)
@@ -112,18 +188,61 @@ export function BuilderPage() {
   const blink = useOption('cursor_blink_interval', '-1')
   const shape = useOption('cursor_shape', 'block')
   const tabStyle = useOption('tab_bar_style', 'fade')
+  const tabEdge = useOption('tab_bar_edge', 'bottom')
+  const decorations = useOption('hide_window_decorations', 'no')
   const font = useOption('font_family', 'monospace')
   const size = useOption('font_size', '11')
   const opacity = useOption('background_opacity', '1')
   const blur = useOption('background_blur', '0')
+  const tint = useOption('background_tint', '0')
   const padding = useOption('window_padding_width', '0')
   const bold = useOption('bold_font', 'auto')
   const italic = useOption('italic_font', 'auto')
+  const imageLayout = useOption('background_image_layout', 'cscaled')
+  const imagePath = useOption('background_image', 'none')
+  const layouts = useOption('enabled_layouts', 'tall')
+  const layout = activeLayout(layouts.effective)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const paneFileRef = useRef<HTMLInputElement>(null)
+  const [remoteImage, setRemoteImage] = useState('')
+  const [localImage, setLocalImage] = useState('')
+  const [panePath, setPanePath] = useState(() => localStorage.getItem('kitty-builder-pane-image') ?? '')
+  const [paneUrl, setPaneUrl] = useState('')
+  const configuredImage = plainPath(imagePath.raw)
 
   useEffect(() => {
     if (!isTauri() || activeFile === 'kitty.conf' || isDirtyState(useWorkspace.getState().document, useWorkspace.getState().original)) return
     void openFile('kitty.conf')
   }, [activeFile, openFile])
+
+  useEffect(() => {
+    if (!isTauri() || !configuredImage.startsWith('/')) {
+      setRemoteImage('')
+      return
+    }
+    let cancel = false
+    void backend.imagePreview(configuredImage).then((url) => {
+      if (!cancel) setRemoteImage(url)
+    }).catch(() => {
+      if (!cancel) setRemoteImage('')
+    })
+    return () => { cancel = true }
+  }, [configuredImage])
+
+  useEffect(() => {
+    if (!panePath || panePath.startsWith('blob:')) {
+      setPaneUrl(panePath)
+      return
+    }
+    if (!isTauri()) return
+    let cancel = false
+    void backend.imagePreview(panePath).then((url) => {
+      if (!cancel) setPaneUrl(url)
+    }).catch(() => {
+      if (!cancel) setPaneUrl('')
+    })
+    return () => { cancel = true }
+  }, [panePath])
 
   const save = async () => {
     if (!confirm(`Write ${activeFile}, create a backup and reload kitty?`)) return
@@ -132,6 +251,87 @@ export function BuilderPage() {
   const switchToMain = () => {
     if (dirty && !confirm('Discard unsaved changes and open kitty.conf?')) return
     void openFile('kitty.conf')
+  }
+  const useScene = async (scene: (typeof scenes)[number]) => {
+    const entries = Object.entries(scene.values)
+    if (isTauri()) {
+      try {
+        if (scene.values.tab_bar_style === 'custom') await backend.write('tab_bar.py', tabBarPy)
+        await backend.write(scene.sessionPath, scene.session)
+        toast(`Session written to ${scene.sessionPath}. Save kitty.conf to launch it.`)
+      } catch (error) {
+        toast(String(error))
+        applyEntries(entries.filter(([key]) => key !== 'startup_session'))
+        return
+      }
+    }
+    applyEntries(entries)
+  }
+  const chooseImage = async () => {
+    try {
+      if (!isTauri()) {
+        fileRef.current?.click()
+        return
+      }
+      const selected = await backend.pickImage()
+      if (selected) editValue('background_image', kittyString(selected))
+    } catch (error) {
+      toast(String(error))
+    }
+  }
+  const installPaneImage = async (selected: string, announce = true) => {
+    const configDir = status?.configDir
+    if (!isTauri() || !configDir) {
+      setPanePath(selected)
+      return
+    }
+    const kitten = status?.kittyPath?.replace(/kitty$/, 'kitten') || 'kitten'
+    const script = `#!/bin/sh\nimage="\${KITTY_BUILDER_PANE_IMAGE:-}"\nimage="\${image#\\"}"\nimage="\${image%\\"}"\nreal="\${KITTY_BUILDER_SHELL:-/bin/zsh}"\nkitten='${kitten.replaceAll("'", '')}'\nif [ -n "$image" ] && [ -f "$image" ]; then\n  if [ ! -x "$kitten" ]; then kitten=kitten; fi\n  "$kitten" icat --stdin=no --align left "$image" || true\nfi\nexec "$real" -l\n`
+    await backend.write('builder-shell', script)
+    updateDocument((document) => {
+      upsertEnv(document, 'KITTY_BUILDER_PANE_IMAGE', selected)
+      const shell = valuesOf(document, 'shell').at(-1) ?? ''
+      if (!shell.includes('builder-shell')) {
+        if (shell.trim()) upsertEnv(document, 'KITTY_BUILDER_SHELL', shell.trim().split(/\s+/)[0] ?? shell.trim())
+        setValue(document, 'shell', `/bin/sh ${configDir}/builder-shell`)
+      }
+    })
+    localStorage.setItem('kitty-builder-pane-image', selected)
+    setPanePath(selected)
+    if (announce) toast('Image added. Save, then open a new kitty window.')
+  }
+  const installedPane = useRef('')
+  useEffect(() => {
+    if (!isTauri() || !status?.configDir || !panePath || panePath.startsWith('blob:') || installedPane.current === panePath) return
+    if (envValue(useWorkspace.getState().document, 'KITTY_BUILDER_PANE_IMAGE') === panePath) {
+      installedPane.current = panePath
+      return
+    }
+    installedPane.current = panePath
+    void installPaneImage(panePath, false).catch((error) => toast(String(error)))
+  }, [panePath, status?.configDir, installPaneImage, toast])
+  const choosePaneImage = async () => {
+    try {
+      if (!isTauri()) {
+        paneFileRef.current?.click()
+        return
+      }
+      const selected = await backend.pickImage()
+      if (selected) await installPaneImage(selected)
+    } catch (error) {
+      toast(String(error))
+    }
+  }
+  const clearPaneImage = () => {
+    localStorage.removeItem('kitty-builder-pane-image')
+    if (panePath.startsWith('blob:')) URL.revokeObjectURL(panePath)
+    setPanePath('')
+    setPaneUrl('')
+    updateDocument((document) => {
+      removeEnv(document, 'KITTY_BUILDER_PANE_IMAGE')
+      removeEnv(document, 'KITTY_BUILDER_SHELL')
+      document.nodes = document.nodes.filter((node) => node.type !== 'directive' || node.key !== 'shell' || !node.value.includes('builder-shell'))
+    })
   }
 
   return (
@@ -151,7 +351,67 @@ export function BuilderPage() {
         {activeFile !== 'kitty.conf' ? (
           <div className="notice">These edits are going into <code>{activeFile}</code>. <button className="btn small" type="button" onClick={switchToMain}>Open kitty.conf</button></div>
         ) : null}
-        {!isTauri() ? <div className="notice">The preview is live. Writing <code>kitty.conf</code> requires the desktop app.</div> : null}
+        {!isTauri() ? <div className="notice">The preview is live. Writing <code>kitty.conf</code> and the startup session requires the desktop app.</div> : null}
+
+        <section className="card card-pad">
+          <b>Scenes</b>
+          <div className="preset-grid">
+            {scenes.map((scene) => (
+              <button key={scene.id} className="preset" type="button" onClick={() => void useScene(scene)}>
+                <span className={`scene-mark ${scene.id}`} />
+                <span><b>{scene.name}</b><small>{scene.note}</small></span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="card card-pad">
+          <b>Layout</b>
+          <div className="choice-grid">
+            {windowLayouts.map((item) => (
+              <button key={item} className={layout === item ? 'active' : ''} type="button" onClick={() => editValue('enabled_layouts', layoutOrder(item))}>{item}</button>
+            ))}
+          </div>
+          <div className="field"><span>Background image</span>
+            <div className="split-fields">
+              <button className="btn" type="button" onClick={() => void chooseImage()}>Choose image</button>
+              <button className="btn" type="button" onClick={() => { resetKeys(['background_image']); setLocalImage(''); setRemoteImage('') }}>Clear</button>
+            </div>
+            <input className="input" value={imagePath.raw} placeholder="none" onChange={(event) => editValue('background_image', event.target.value)} />
+            <div className="field"><span>Pane image</span>
+              <div className="split-fields">
+                <button className="btn" type="button" onClick={() => void choosePaneImage()}>Choose image</button>
+                <button className="btn" type="button" disabled={!panePath} onClick={clearPaneImage}>Clear</button>
+              </div>
+              <p className="card-desc">Optional. After saving, it is shown when a new kitty window opens.</p>
+            </div>
+            <input ref={paneFileRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              const url = URL.createObjectURL(file)
+              setPanePath((current) => {
+                if (current.startsWith('blob:')) URL.revokeObjectURL(current)
+                return url
+              })
+            }} />
+            <input ref={fileRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              setLocalImage((current) => {
+                if (current.startsWith('blob:')) URL.revokeObjectURL(current)
+                return URL.createObjectURL(file)
+              })
+            }} />
+          </div>
+          <label className="field"><span>Image fit</span>
+            <select className="select" value={imageLayouts.includes(imageLayout.effective as typeof imageLayouts[number]) ? imageLayout.effective : 'cscaled'} onChange={(event) => editValue('background_image_layout', event.target.value)}>
+              {imageLayouts.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="field slider-row"><span>Image tint <b>{tint.effective}</b></span>
+            <input type="range" min="0" max="0.8" step="0.02" value={Number.parseFloat(tint.effective) || 0} onChange={(event) => editValue('background_tint', event.target.value)} />
+          </label>
+        </section>
 
         <section className="card card-pad">
           <div className="panel-title"><b>Themes</b><button className="btn small" type="button" onClick={() => resetKeys(themeKeys)}>Clear colors</button></div>
@@ -199,7 +459,7 @@ export function BuilderPage() {
         <section className="card card-pad">
           <b>Window</b>
           <label className="field slider-row"><span>Opacity <b>{opacity.effective}</b></span>
-            <input type="range" min="0.4" max="1" step="0.05" value={Number.parseFloat(opacity.effective) || 1} onChange={(event) => editValue('background_opacity', event.target.value)} />
+            <input type="range" min="0.35" max="1" step="0.01" value={Number.parseFloat(opacity.effective) || 1} onChange={(event) => editValue('background_opacity', event.target.value)} />
           </label>
           <label className="field slider-row"><span>Blur <b>{blur.effective}</b></span>
             <input type="range" min="0" max="64" step="1" value={Number.parseFloat(blur.effective) || 0} onChange={(event) => editValue('background_blur', event.target.value)} />
@@ -212,6 +472,19 @@ export function BuilderPage() {
               {tabStyles.map((choice) => <option key={choice}>{choice}</option>)}
             </select>
           </label>
+          <div className="field"><span>Tab edge</span>
+            <div className="segment">
+              {(['top', 'bottom'] as const).map((edge) => (
+                <button key={edge} className={tabEdge.effective === edge ? 'active' : ''} type="button" onClick={() => editValue('tab_bar_edge', edge)}>{edge}</button>
+              ))}
+            </div>
+          </div>
+          <div className="field"><span>Title bar</span>
+            <div className="segment">
+              <button className={decorations.effective !== 'yes' ? 'active' : ''} type="button" onClick={() => editValue('hide_window_decorations', 'no')}>Shown</button>
+              <button className={decorations.effective === 'yes' ? 'active' : ''} type="button" onClick={() => editValue('hide_window_decorations', 'yes')}>Hidden</button>
+            </div>
+          </div>
         </section>
 
         <section className="card card-pad">
@@ -224,7 +497,7 @@ export function BuilderPage() {
           </div>
         </section>
       </div>
-      <TerminalPreview />
+      <TerminalPreview imageUrl={remoteImage || localImage} paneUrl={paneUrl} />
     </div>
   )
 }

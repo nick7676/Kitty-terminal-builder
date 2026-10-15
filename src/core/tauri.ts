@@ -38,6 +38,17 @@ export const backend = {
   backups: (relativePath: string) => invoke<BackupInfo[]>('list_backups', { relativePath }),
   restore: (backupPath: string, relativePath: string) => invoke('restore_backup', { backupPath, relativePath }),
   reload: () => invoke<CommandResult>('reload_kitty'),
+  async pickImage(): Promise<string | null> {
+    if (!isTauri()) return null
+    const dialog = await import('@tauri-apps/plugin-dialog')
+    const selected = await dialog.open({
+      title: 'Background image',
+      multiple: false,
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+    })
+    return typeof selected === 'string' ? selected : null
+  },
+  imagePreview: (path: string) => invoke<string>('preview_image', { path }),
   packageAction: (manager: string, action: string, packageName: string) =>
     invoke<CommandResult>('run_package_action', { manager, action, package: packageName }),
   detectCommands: (commands: string[]) => invoke<Record<string, boolean>>('detect_commands', { commands }),

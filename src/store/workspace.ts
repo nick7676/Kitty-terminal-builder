@@ -36,6 +36,7 @@ interface Workspace {
   editValue: (key: string, value: string) => void
   editValues: (key: string, values: string[]) => void
   applyEntries: (entries: [string, string][]) => void
+  updateDocument: (recipe: (document: ConfigDocument) => void) => void
   resetKeys: (keys: string[]) => void
   resetOption: (key: string) => void
   replaceSource: (source: string) => void
@@ -131,6 +132,11 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     for (const [key, value] of entries) setValue(document, key, value)
     return { document }
   }),
+  updateDocument: (recipe) => set((state) => {
+    const document = clone(state.document)
+    recipe(document)
+    return { document }
+  }),
   resetKeys: (keys) => set((state) => {
     const document = clone(state.document)
     for (const key of keys) removeValue(document, key)
@@ -146,10 +152,21 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   saveAndReload: async () => {
     const current = contentOf(get().document)
     const result = await backend.write(get().activeFile, current)
-    const files = await backend.files()
-    set({ original: current, files, log: `Saved ${result.path}${result.backupPath ? `\nBackup: ${result.backupPath}` : ''}` })
-    const reload = await backend.reload()
-    get().toast(reload.success ? 'Saved and reloaded successfully' : `Saved. Reload failed:\n${reload.stderr}`)
+    set({ original: current })
+    try {
+      set({ files: await backend.files() })
+    } catch {
+      // The file is already saved if the directory listing fails.
+    }
+    let detail = ''
+    try {
+      const reload = await backend.reload()
+      detail = reload.success ? reload.stdout : reload.stderr
+    } catch (error) {
+      detail = String(error)
+    }
+    const backup = result.backupPath ? `\nBackup: ${result.backupPath}` : ''
+    get().toast(detail ? `Saved${backup}\n${detail}` : `Saved${backup}`)
   },
   createFromTemplate: async (path, template, includeProfile) => {
     await backend.write(path, template)

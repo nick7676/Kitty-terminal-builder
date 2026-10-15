@@ -60,3 +60,34 @@ export function setValues(document: ConfigDocument, key: string, values: string[
 export function removeValue(document: ConfigDocument, key: string): void {
   document.nodes = document.nodes.filter((node) => node.type !== 'directive' || node.key !== key)
 }
+
+function envName(value: string) {
+  const eq = value.indexOf('=')
+  const space = value.indexOf(' ')
+  if (eq >= 0 && (space < 0 || eq < space)) return value.slice(0, eq)
+  return space < 0 ? value : value.slice(0, space)
+}
+
+export function envValue(document: ConfigDocument, name: string) {
+  const raw = valuesOf(document, 'env').find((value) => envName(value) === name)
+  if (!raw) return ''
+  const rest = raw.slice(name.length).trim().replace(/^=/, '')
+  return rest.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1')
+}
+
+export function upsertEnv(document: ConfigDocument, name: string, value: string) {
+  const full = `${name}=${value.replaceAll('"', '')}`
+  const index = document.nodes.findIndex((node) => node.type === 'directive' && node.key === 'env' && envName(node.value) === name)
+  if (index >= 0) {
+    const node = document.nodes[index]
+    if (node.type === 'directive') document.nodes[index] = { ...node, value: full, dirty: true }
+    return
+  }
+  if (document.nodes.length && document.nodes.at(-1)?.type === 'raw' && document.nodes.at(-1)?.raw !== '') document.nodes.push({ type: 'raw', raw: '' })
+  document.nodes.push({ type: 'raw', raw: '# Managed by Kitty Builder' })
+  document.nodes.push({ type: 'directive', raw: '', key: 'env', value: full, indent: '', dirty: true })
+}
+
+export function removeEnv(document: ConfigDocument, name: string) {
+  document.nodes = document.nodes.filter((node) => node.type !== 'directive' || node.key !== 'env' || envName(node.value) !== name)
+}

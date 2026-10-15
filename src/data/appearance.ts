@@ -21,8 +21,10 @@ export const surfaceSlots = [
 
 export const styleKeys = [
   'font_family', 'bold_font', 'italic_font', 'bold_italic_font', 'font_size',
-  'cursor_shape', 'cursor_blink_interval', 'background_opacity', 'background_blur',
-  'window_padding_width', 'tab_bar_style',
+  'cursor_shape', 'cursor_blink_interval', 'background_opacity', 'background_blur', 'background_tint',
+  'background_image', 'background_image_layout', 'window_padding_width', 'hide_window_decorations',
+  'tab_bar_style', 'tab_bar_edge', 'tab_bar_align', 'tab_separator', 'tab_title_template', 'tab_bar_min_tabs',
+  'enabled_layouts', 'startup_session',
 ] as const
 
 export const themeKeys = [
@@ -30,9 +32,32 @@ export const themeKeys = [
   ...ansiSlots.map(([key]) => key),
 ]
 
-export const fontChoices = ['monospace', 'Menlo', 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Hack', 'IBM Plex Mono', 'Iosevka']
+export const fontChoices = ['monospace', 'Menlo', 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Hack', 'IBM Plex Mono', 'Iosevka', 'Noto Sans Mono']
 export const cursorShapes = ['block', 'beam', 'underline'] as const
 export const tabStyles = ['fade', 'separator', 'slant', 'powerline', 'hidden', 'custom'] as const
+export const imageLayouts = ['cscaled', 'scaled', 'tiled', 'mirror-tiled', 'clamped', 'centered'] as const
+export const windowLayouts = ['tall', 'fat', 'grid', 'horizontal', 'vertical', 'stack'] as const
+
+export function activeLayout(value: string) {
+  const first = value.trim().split(/[\s,]+/)[0]
+  return !first || first === '*' ? 'tall' : first
+}
+
+export function layoutOrder(layout: string) {
+  return [layout, ...windowLayouts.filter((item) => item !== layout)].join(',')
+}
+
+export function kittyString(value: string) {
+  const bare = value.trim().replace(/^"(.*)"$/, '$1')
+  if (!bare || bare === 'none') return 'none'
+  return /[\s"]/.test(bare) ? `"${bare.replaceAll('"', '')}"` : bare
+}
+
+export function plainPath(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'none') return ''
+  return trimmed.replace(/^"(.*)"$/, '$1')
+}
 export const blinkChoices = [
   ['-1', 'Default'],
   ['0', 'Off'],
@@ -118,6 +143,90 @@ export const presets: TerminalPreset[] = [
       '#f7f3ea', '#b42318', '#3f7d4e', '#8a5a00', '#1d4e89', '#7a3e78', '#0f6f6a', '#5c564e',
       '#d9d2c5', '#d14332', '#4f9d62', '#b45309', '#2563eb', '#9d4edd', '#0f9488', '#2c2825',
     ], ['#2c2825', '#efe7d6', '#6f675e', '#e7e0d2']),
+  },
+]
+
+export interface TerminalScene {
+  id: string
+  name: string
+  note: string
+  sessionPath: string
+  session: string
+  values: Record<string, string>
+}
+
+const splitsSession = `new_tab fish
+layout tall
+launch --cwd=current
+launch --cwd=current
+launch --cwd=current
+new_tab dotfiles
+layout tall
+launch --cwd=current
+new_tab nvim
+layout stack
+launch --cwd=current
+`
+
+const wallpaperSession = `new_tab home
+layout stack
+launch --cwd=current
+`
+
+export const scenes: TerminalScene[] = [
+  {
+    id: 'splits',
+    name: 'Splits',
+    note: 'Tabs, a tall layout and a translucent window',
+    sessionPath: 'sessions/splits.session',
+    session: splitsSession,
+    values: {
+      ...palette('#1a1d2a', '#d7dced', '#8fb4ff', '#2c3558', [
+        '#1a1d2a', '#f2a2c0', '#8fd4b0', '#e6c07b', '#8fb4ff', '#c9a6f2', '#7fd6e8', '#d7dced',
+        '#5c647c', '#ffb3c7', '#b6ebc8', '#f3d7a1', '#b3cdff', '#e0c6ff', '#b7eef6', '#ffffff',
+      ], ['#d7dced', '#1a1d2a', '#8b93ab', '#1a1d2a']),
+      background_opacity: '0.9',
+      background_blur: '16',
+      background_tint: '0.2',
+      window_padding_width: '8',
+      hide_window_decorations: 'no',
+      tab_bar_edge: 'top',
+      tab_bar_style: 'custom',
+      tab_bar_align: 'left',
+      tab_separator: ' · ',
+      tab_title_template: '{index} {title}',
+      tab_bar_min_tabs: '1',
+      enabled_layouts: layoutOrder('tall'),
+      font_size: '13',
+      cursor_shape: 'beam',
+      startup_session: 'sessions/splits.session',
+    },
+  },
+  {
+    id: 'wallpaper',
+    name: 'Wallpaper',
+    note: 'One pane over a scaled background image',
+    sessionPath: 'sessions/wallpaper.session',
+    session: wallpaperSession,
+    values: {
+      ...palette('#102033', '#e7f2ff', '#7fd6e8', '#1d3d5c', [
+        '#102033', '#ff6b8a', '#7ddea0', '#ffe08a', '#8eb6ff', '#d2b4ff', '#7fd6e8', '#d5e4f5',
+        '#5d7894', '#ffb086', '#b6ebc8', '#fff0b8', '#b7d0ff', '#e6d2ff', '#b7eef6', '#ffffff',
+      ], ['#e7f2ff', '#102033', '#8eb6c9', '#102033']),
+      background_opacity: '1',
+      background_blur: '0',
+      background_tint: '0.34',
+      background_image_layout: 'cscaled',
+      window_padding_width: '18',
+      hide_window_decorations: 'no',
+      tab_bar_style: 'hidden',
+      tab_bar_edge: 'top',
+      tab_bar_min_tabs: '2',
+      enabled_layouts: layoutOrder('stack'),
+      font_size: '14',
+      cursor_shape: 'beam',
+      startup_session: 'sessions/wallpaper.session',
+    },
   },
 ]
 
