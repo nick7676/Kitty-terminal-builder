@@ -2,9 +2,12 @@ export interface SystemStatus {
   os: string
   arch: string
   configDir: string
+  configExists: boolean
+  kittyConfExists: boolean
   kittyInstalled: boolean
   kittyPath?: string
   kittyVersion?: string
+  kittyRunning: boolean
   packageManagers: string[]
 }
 

@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+import { isTauri } from '../core/tauri'
 import { PageHead } from '../app/shell'
 import { useWorkspace } from '../store/workspace'
 
@@ -23,16 +25,19 @@ export function SetupPage() {
             <div className="check"><span>kitty binary</span><span className={`tag ${status?.kittyInstalled ? 'active' : ''}`}>{status?.kittyInstalled ? 'Installed' : 'Missing'}</span></div>
             <div className="check"><span>Version</span><code>{status?.kittyVersion ?? '—'}</code></div>
             <div className="check"><span>Binary path</span><code>{status?.kittyPath ?? '—'}</code></div>
+            <div className="check"><span>Running now</span><span className={`tag ${status?.kittyRunning ? 'active' : ''}`}>{status?.kittyRunning ? 'Yes' : 'No'}</span></div>
             <div className="check"><span>Config directory</span><code>{status?.configDir ?? '—'}</code></div>
+            <div className="check"><span>kitty.conf</span><span className={`tag ${status?.kittyConfExists ? 'active' : ''}`}>{status?.kittyConfExists ? 'Present' : 'Not created'}</span></div>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
-            {canManage ? <button className="btn primary" type="button" onClick={() => {
+            {status?.kittyInstalled ? <Link className="btn" to="/builder">Open builder</Link> : null}
+            {canManage ? <button className="btn primary" type="button" disabled={!isTauri()} onClick={() => {
               const command = action === 'install' ? 'brew install --cask kitty' : 'brew upgrade --cask kitty'
               if (!confirm(`${action === 'install' ? 'Install' : 'Update'} kitty?\n\n${command}`)) return
               void manageKitty(action).catch((error) => toast(String(error)))
             }}>{status?.kittyInstalled ? 'Update kitty' : 'Install kitty'}</button> : null}
             <button className="btn" type="button" onClick={() => void refreshStatus()}>Refresh detection</button>
-            {status?.kittyInstalled ? <button className="btn" type="button" onClick={() => void reloadKitty()}>Reload config</button> : null}
+            {status?.kittyInstalled ? <button className="btn" type="button" disabled={!isTauri()} onClick={() => void reloadKitty()}>Reload config</button> : null}
           </div>
         </div>
         <div className="card card-pad">

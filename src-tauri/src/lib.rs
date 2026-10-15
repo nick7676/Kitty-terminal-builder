@@ -16,9 +16,12 @@ struct SystemStatus {
     os: String,
     arch: String,
     config_dir: String,
+    config_exists: bool,
+    kitty_conf_exists: bool,
     kitty_installed: bool,
     kitty_path: Option<String>,
     kitty_version: Option<String>,
+    kitty_running: bool,
     package_managers: Vec<String>,
 }
 
@@ -96,25 +99,65 @@ fn safe_relative(value: &str) -> Result<PathBuf, String> {
     Ok(path.to_path_buf())
 }
 
+fn search_directories() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(path) = env::var_os("PATH") {
+        dirs.extend(env::split_paths(&path));
+    }
+    let mut extras = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+        PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
+    ];
+    if let Some(home) = dirs::home_dir() {
+        extras.push(home.join(".local/bin"));
+        extras.push(home.join("bin"));
+        extras.push(home.join(".local/kitty.app/bin"));
+    }
+    for extra in extras {
+        if !dirs.iter().any(|dir| dir == &extra) {
+            dirs.push(extra);
+        }
+    }
+    dirs
+}
+
 fn find_in_path(name: &str) -> Option<PathBuf> {
-    env::var_os("PATH").and_then(|paths| {
-        env::split_paths(&paths)
-            .map(|path| path.join(name))
-            .find(|path| path.is_file())
-    })
+    search_directories()
+        .into_iter()
+        .map(|dir| dir.join(name))
+        .find(|path| path.is_file())
 }
 
 fn kitty_binary() -> Option<PathBuf> {
-    find_in_path("kitty")
-        .or_else(|| {
-            let macos = PathBuf::from("/Applications/kitty.app/Contents/MacOS/kitty");
-            macos.is_file().then_some(macos)
-        })
-        .or_else(|| {
-            dirs::home_dir()
-                .map(|home| home.join(".local/kitty.app/bin/kitty"))
-                .filter(|path| path.is_file())
-        })
+    let mut candidates = Vec::new();
+    if let Some(found) = find_in_path("kitty") {
+        candidates.push(found);
+    }
+    candidates.push(PathBuf::from("/Applications/kitty.app/Contents/MacOS/kitty"));
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join("Applications/kitty.app/Contents/MacOS/kitty"));
+        candidates.push(home.join(".local/kitty.app/bin/kitty"));
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn version_label(stdout: &str) -> String {
+    let line = stdout.lines().next().unwrap_or("").trim();
+    let Some(rest) = line.strip_prefix("kitty ") else {
+        return line.to_string();
+    };
+    let version = rest.split_whitespace().next().unwrap_or(rest);
+    format!("kitty {version}")
+}
+
+fn kitty_running() -> bool {
+    Command::new("pgrep")
+        .args(["-x", "kitty"])
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 fn command_output(mut command: Command) -> Result<CommandResult, String> {
@@ -151,12 +194,12 @@ fn write_managed_packages(packages: &[ManagedPackage]) -> Result<(), String> {
 fn get_system_status() -> Result<SystemStatus, String> {
     let kitty_path = kitty_binary();
     let kitty_version = kitty_path.as_ref().and_then(|path| {
-        Command::new(path)
-            .arg("--version")
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        let output = Command::new(path).arg("--version").output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let label = version_label(&String::from_utf8_lossy(&output.stdout));
+        (!label.is_empty()).then_some(label)
     });
     let managers = [
         "brew", "apt", "apt-get", "dnf", "pacman", "pipx", "cargo", "npm",
@@ -165,14 +208,23 @@ fn get_system_status() -> Result<SystemStatus, String> {
     .filter(|name| find_in_path(name).is_some())
     .map(str::to_string)
     .collect();
+    let root = config_root()?;
 
     Ok(SystemStatus {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
-        config_dir: config_root()?.display().to_string(),
+        config_dir: root.display().to_string(),
+        config_exists: root.is_dir(),
+        kitty_conf_exists: root.join("kitty.conf").is_file(),
         kitty_installed: kitty_path.is_some(),
-        kitty_path: kitty_path.map(|path| path.display().to_string()),
+        kitty_path: kitty_path.map(|path| {
+            path.canonicalize()
+                .unwrap_or(path)
+                .display()
+                .to_string()
+        }),
         kitty_version,
+        kitty_running: kitty_running(),
         package_managers: managers,
     })
 }
@@ -538,7 +590,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{safe_relative, valid_package_name};
+    use super::{safe_relative, valid_package_name, version_label};
 
     #[test]
     fn accepts_paths_inside_config_directory() {
@@ -552,6 +604,15 @@ mod tests {
         assert!(safe_relative("../secrets").is_err());
         assert!(safe_relative("/etc/passwd").is_err());
         assert!(safe_relative("").is_err());
+    }
+
+    #[test]
+    fn formats_the_first_line_of_kitty_version_output() {
+        assert_eq!(
+            version_label("kitty 0.49.2 created by Kovid Goyal\n"),
+            "kitty 0.49.2"
+        );
+        assert_eq!(version_label(""), "");
     }
 
     #[test]

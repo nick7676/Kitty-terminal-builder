@@ -1,3 +1,6 @@
+# kitty +runpy executes this argument inside entry_points.runpy. Nested functions
+# defined there cannot see imports, so the program runs in its own namespace.
+exec(r'''
 import json
 import re
 import sys
@@ -49,7 +52,10 @@ for opt in definition.iter_all_options():
             entry['macosDefault'] = str(macos)
         parser = getattr(opt.parser_func, '__name__', '')
         choices = list(getattr(opt, 'choices', ()) or ())
-        if choices:
+        if opt.name == 'cursor_shape':
+            entry['kind'] = 'choice'
+            entry['choices'] = ['block', 'beam', 'underline']
+        elif choices:
             entry['kind'] = 'choice'
             entry['choices'] = choices
         elif parser in ('to_bool',):
@@ -80,3 +86,4 @@ for m in definition.iter_all_maps():
 sections = [{'id': g.name, 'title': g.title} for g in definition.root_group.items if type(g).__name__ == 'Group']
 
 json.dump({'kittyVersion': str_version, 'sections': sections, 'options': options, 'maps': maps}, sys.stdout, ensure_ascii=False)
+''', {"__name__": "__main__", "__builtins__": __builtins__})

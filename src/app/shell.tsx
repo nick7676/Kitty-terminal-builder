@@ -6,6 +6,7 @@ import { isDirtyState, useWorkspace } from '../store/workspace'
 
 const links = [
   { to: '/', label: 'Overview', icon: '⌂' },
+  { to: '/builder', label: 'Builder', icon: '▣' },
   { to: '/config/$section', params: { section: 'fonts' }, label: 'All settings', icon: '⚙' },
   { to: '/files', label: 'Files & profiles', icon: '▤' },
   { to: '/integrations', label: 'Integrations', icon: '◇' },
@@ -41,10 +42,11 @@ export function Shell({ children }: { children: ReactNode }) {
     if (status?.kittyInstalled) void reloadKitty()
   }, { enableOnFormTags: true })
   useHotkeys('mod+1', () => void navigate({ to: '/' }))
-  useHotkeys('mod+2', () => void navigate({ to: '/config/$section', params: { section: 'fonts' } }))
-  useHotkeys('mod+3', () => void navigate({ to: '/files' }))
-  useHotkeys('mod+4', () => void navigate({ to: '/integrations' }))
-  useHotkeys('mod+5', () => void navigate({ to: '/setup' }))
+  useHotkeys('mod+2', () => void navigate({ to: '/builder' }))
+  useHotkeys('mod+3', () => void navigate({ to: '/config/$section', params: { section: 'fonts' } }))
+  useHotkeys('mod+4', () => void navigate({ to: '/files' }))
+  useHotkeys('mod+5', () => void navigate({ to: '/integrations' }))
+  useHotkeys('mod+6', () => void navigate({ to: '/setup' }))
   const openHelp = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null
     if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
@@ -61,7 +63,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="status-bar">
           {loading ? <span className="pill">Loading…</span> : null}
           {error ? <span className="pill warning">Backend issue</span> : null}
-          <span className={`pill ${status?.kittyInstalled ? 'success' : 'warning'}`}><i className="dot" />{status?.kittyVersion ?? 'kitty not detected'}</span>
+          <span className={`pill ${status?.kittyInstalled ? 'success' : 'warning'}`}><i className="dot" />{status?.kittyInstalled ? (status.kittyVersion ?? 'kitty installed') : 'kitty not installed'}</span>
           <span className="pill">{status?.os ?? 'web'} · {status?.arch ?? 'preview'}</span>
         </div>
       </header>
@@ -88,7 +90,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <div className="check"><span>Save and reload</span><code>⌘/Ctrl S</code></div>
               <div className="check"><span>Focus search</span><code>⌘/Ctrl K</code></div>
               <div className="check"><span>Reload kitty</span><code>⌘/Ctrl ⇧ R</code></div>
-              <div className="check"><span>Navigate pages</span><code>⌘/Ctrl 1–5</code></div>
+              <div className="check"><span>Navigate pages</span><code>⌘/Ctrl 1–6</code></div>
               <div className="check"><span>Close this panel</span><code>Esc</code></div>
             </div>
           </div>

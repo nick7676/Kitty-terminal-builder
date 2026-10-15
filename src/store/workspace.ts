@@ -35,6 +35,8 @@ interface Workspace {
   openFile: (path: string) => Promise<void>
   editValue: (key: string, value: string) => void
   editValues: (key: string, values: string[]) => void
+  applyEntries: (entries: [string, string][]) => void
+  resetKeys: (keys: string[]) => void
   resetOption: (key: string) => void
   replaceSource: (source: string) => void
   discard: () => void
@@ -85,15 +87,19 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     set({ loading: true, error: '' })
     try {
       const status = await backend.status()
-      if (!isTauri()) {
-        set({ status, loading: false })
-        return
+      set({ status })
+      if (!isTauri()) return
+      let registry = get().registry
+      if (status.kittyInstalled) {
+        try {
+          registry = await backend.registry()
+        } catch (error) {
+          set({ error: `Option registry unavailable: ${String(error)}` })
+        }
       }
-      const registry = status.kittyInstalled ? await backend.registry() : get().registry
       const files = await backend.files()
       const snapshot = await backend.read('kitty.conf')
       set({
-        status,
         registry,
         files,
         activeFile: 'kitty.conf',
@@ -118,6 +124,16 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   editValues: (key, values) => set((state) => {
     const document = clone(state.document)
     setValues(document, key, values)
+    return { document }
+  }),
+  applyEntries: (entries) => set((state) => {
+    const document = clone(state.document)
+    for (const [key, value] of entries) setValue(document, key, value)
+    return { document }
+  }),
+  resetKeys: (keys) => set((state) => {
+    const document = clone(state.document)
+    for (const key of keys) removeValue(document, key)
     return { document }
   }),
   resetOption: (key) => set((state) => {

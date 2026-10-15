@@ -8,14 +8,27 @@ async function invoke<T>(command: string, args?: Record<string, unknown>): Promi
   return api.invoke<T>(command, args)
 }
 
+const browserStatus: SystemStatus = {
+  os: navigator.platform.toLowerCase().includes('mac') ? 'macos' : 'linux',
+  arch: 'web',
+  configDir: '~/.config/kitty',
+  configExists: false,
+  kittyConfExists: false,
+  kittyInstalled: false,
+  kittyRunning: false,
+  packageManagers: [],
+}
+
 export const backend = {
   async status(): Promise<SystemStatus> {
-    if (!isTauri()) return {
-      os: navigator.platform.toLowerCase().includes('mac') ? 'macos' : 'linux',
-      arch: 'web',
-      configDir: '~/.config/kitty',
-      kittyInstalled: false,
-      packageManagers: [],
+    if (!isTauri()) {
+      try {
+        const response = await fetch('/__kitty/status')
+        if (response.ok) return await response.json() as SystemStatus
+      } catch {
+        // The static preview has no local status bridge.
+      }
+      return browserStatus
     }
     return invoke('get_system_status')
   },
