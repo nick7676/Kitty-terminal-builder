@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import tabBarPy from '../../scripts/studio-tab-bar.py?raw'
 import { backend, isTauri } from '../core/tauri'
 import { envValue, removeEnv, setValue, upsertEnv, valuesOf } from '../core/document'
 import {
-  activeLayout, ansiSlots, blinkChoices, cssColor, cursorShapes, fontChoices, imageLayouts, kittyString, layoutOrder,
+  activeLayout, ansiSlots, blinkChoices, cssColor, cursorShapes, fontChoices, imageLayouts, kittyString,
   plainPath, presets, scenes, styleKeys, surfaceSlots, tabStyles, themeKeys, windowLayouts,
 } from '../data/appearance'
+import {
+  cloneTree, enabledFor, firstPane, paneCount, presetTrees, removePane, sessionFor, setRatio, splitPane, type LayoutNode,
+} from '../data/layout-tree'
 import { isDirtyState, useWorkspace } from '../store/workspace'
 
 function useOption(key: string, fallback: string) {
@@ -14,13 +17,48 @@ function useOption(key: string, fallback: string) {
   return { raw, effective: raw.trim() ? raw : fallback }
 }
 
+type ImageSize = { w: number; h: number }
+
+const PaneImageContext = createContext({ url: '', size: { w: 220, h: 160 } as ImageSize, resize: (_width: number, _height: number, _done: boolean) => {} })
+
+function cellsFor(size: ImageSize) {
+  return { cols: Math.min(80, Math.max(6, Math.round(size.w / 9))), rows: Math.min(40, Math.max(4, Math.round(size.h / 20))) }
+}
+
+function ResizableImage() {
+  const { url, size, resize } = useContext(PaneImageContext)
+  if (!url) return null
+  const start = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const originX = event.clientX
+    const originY = event.clientY
+    const width = size.w
+    const height = size.h
+    const move = (pointer: PointerEvent) => resize(Math.max(64, width + pointer.clientX - originX), Math.max(64, height + pointer.clientY - originY), false)
+    const stop = (pointer: PointerEvent) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      resize(Math.max(64, width + pointer.clientX - originX), Math.max(64, height + pointer.clientY - originY), true)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+  return (
+    <div className="pane-image-box" style={{ width: size.w, height: size.h }}>
+      <img className="pane-image" alt="" src={url} />
+      <div className="image-resize" onPointerDown={start} />
+    </div>
+  )
+}
+
 function imageFit(layout: string) {
   if (layout === 'centered' || layout === 'clamped') return 'contain'
   if (layout === 'tiled' || layout === 'mirror-tiled') return 'tile'
   return 'cover'
 }
 
-function TerminalPreview({ imageUrl, paneUrl }: { imageUrl: string; paneUrl: string }) {
+function TerminalPreview({ imageUrl, paneUrl, tree, selected, onSelect, onRatio, onCommit }: { imageUrl: string; paneUrl: string; tree: LayoutNode; selected: string; onSelect: (id: string) => void; onRatio: (id: string, ratio: number) => void; onCommit: () => void }) {
   const background = useOption('background', '#000000')
   const foreground = useOption('foreground', '#dddddd')
   const cursor = useOption('cursor', '#cccccc')
@@ -36,7 +74,6 @@ function TerminalPreview({ imageUrl, paneUrl }: { imageUrl: string; paneUrl: str
   const tabEdge = useOption('tab_bar_edge', 'bottom')
   const decorations = useOption('hide_window_decorations', 'no')
   const imageLayout = useOption('background_image_layout', 'tiled')
-  const layouts = useOption('enabled_layouts', 'tall')
   const activeTab = useOption('active_tab_background', '#eeeeee')
   const activeTabText = useOption('active_tab_foreground', '#000000')
   const inactiveTab = useOption('inactive_tab_background', '#999999')
@@ -49,9 +86,8 @@ function TerminalPreview({ imageUrl, paneUrl }: { imageUrl: string; paneUrl: str
     return { key, label, effective: raw.trim() ? raw : fallback }
   })
   const color = (slot: string, fallback: string) => cssColor(ansi.find((item) => item.key === slot)?.effective, fallback)
-  const layout = activeLayout(layouts.effective)
   const fontSize = Math.min(18, Math.max(11, Number.parseFloat(size.effective) || 13))
-  const hiddenTabs = tabStyle.effective === 'hidden' || (layout === 'stack' && tabStyle.effective !== 'custom')
+  const hiddenTabs = tabStyle.effective === 'hidden' || (tree.kind === 'pane' && tree.label === 'fetch' && tabStyle.effective !== 'custom')
   const textTabs = tabStyle.effective === 'custom' || tabStyle.effective === 'fade' || tabStyle.effective === 'separator'
   const art = Boolean(imageUrl)
   const caret = `caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`
@@ -100,18 +136,43 @@ function TerminalPreview({ imageUrl, paneUrl }: { imageUrl: string; paneUrl: str
         )}
         <div className="term-canvas" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
           <div className="term-wash" />
-          <div className={`panes layout-${layout}`}>
-            {layout === 'stack' ? <FetchPane dots={ansi} caret={caret} paneUrl={paneUrl} /> : (
-              <>
-                <EditorPane caret={caret} />
-                <PicturePane paneUrl={paneUrl} />
-                {layout === 'horizontal' || layout === 'grid' || layout === 'fat' ? <PromptPane title="ssh" /> : null}
-                {layout === 'grid' ? <PromptPane title="logs" /> : null}
-                {layout === 'tall' || layout === 'vertical' ? <PromptPane title="~/config/fish" /> : null}
-              </>
-            )}
-          </div>
+          <SplitView node={tree} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} paneUrl={paneUrl} dots={ansi} />
         </div>
+      </div>
+    </div>
+  )
+}
+
+function SplitView({ node, selected, onSelect, onRatio, onCommit, caret, paneUrl, dots }: { node: LayoutNode; selected: string; onSelect: (id: string) => void; onRatio: (id: string, ratio: number) => void; onCommit: () => void; caret: string; paneUrl: string; dots: { key: string; effective: string }[] }) {
+  if (node.kind === 'pane') {
+    const body = node.label === 'editor' ? <EditorPane caret={caret} /> : node.label === 'image' ? <PicturePane paneUrl={paneUrl} /> : node.label === 'fetch' ? <FetchPane dots={dots} caret={caret} paneUrl={paneUrl} /> : <PromptPane title={node.label} />
+    return <div className={`pane-wrap ${selected === node.id ? 'selected' : ''}`} onClick={() => onSelect(node.id)}>{body}</div>
+  }
+  const start = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const bounds = event.currentTarget.parentElement?.getBoundingClientRect()
+    if (!bounds) return
+    const move = (pointer: PointerEvent) => {
+      const raw = node.axis === 'x' ? (pointer.clientX - bounds.left) / bounds.width : (pointer.clientY - bounds.top) / bounds.height
+      onRatio(node.id, Math.min(0.85, Math.max(0.15, raw)))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      onCommit()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+  return (
+    <div className={`split axis-${node.axis}`}>
+      <div className="split-slot" style={{ flexBasis: `${node.ratio * 100}%` }}>
+        <SplitView node={node.first} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} paneUrl={paneUrl} dots={dots} />
+      </div>
+      <div className={`split-handle ${node.axis}`} onPointerDown={start} />
+      <div className="split-slot grow">
+        <SplitView node={node.second} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} paneUrl={paneUrl} dots={dots} />
       </div>
     </div>
   )
@@ -137,7 +198,7 @@ function EditorPane({ caret }: { caret: string }) {
 function PicturePane({ paneUrl }: { paneUrl: string }) {
   return (
     <section className="pane">
-      {paneUrl ? <img className="pane-image" alt="" src={paneUrl} /> : <p className="c-dim">$</p>}
+      {paneUrl ? <ResizableImage /> : <p className="c-dim">$</p>}
     </section>
   )
 }
@@ -160,7 +221,7 @@ function FetchPane({ dots, caret, paneUrl }: { dots: { key: string; effective: s
   ]
   return (
     <section className={`pane fetch ${paneUrl ? 'with-image' : ''}`}>
-      {paneUrl ? <img className="pane-image" alt="" src={paneUrl} /> : null}
+      {paneUrl ? <ResizableImage /> : null}
       <div>
         <p><b>builder</b><span className="c-dim">@kitty</span></p>
         {rows.map(([tone, label, value]) => <p key={label}><span className={tone}>{label}</span> {value}</p>)}
@@ -202,12 +263,49 @@ export function BuilderPage() {
   const imagePath = useOption('background_image', 'none')
   const layouts = useOption('enabled_layouts', 'tall')
   const layout = activeLayout(layouts.effective)
+  const [trees, setTrees] = useState<Record<string, LayoutNode>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('kitty-builder-layouts') ?? '{}') as Record<string, LayoutNode>
+      return { ...Object.fromEntries(Object.entries(presetTrees).map(([key, value]) => [key, cloneTree(value)])), ...saved }
+    } catch {
+      return Object.fromEntries(Object.entries(presetTrees).map(([key, value]) => [key, cloneTree(value)]))
+    }
+  })
+  const [selectedPane, setSelectedPane] = useState('editor')
+  const tree = trees[layout] ?? cloneTree(presetTrees[layout] ?? presetTrees.custom)
+  const treeRef = useRef(tree)
+  const layoutRef = useRef(layout)
+  treeRef.current = tree
+  layoutRef.current = layout
+  const remember = (next: Record<string, LayoutNode>) => {
+    setTrees(next)
+    localStorage.setItem('kitty-builder-layouts', JSON.stringify(next))
+  }
+  const commitLayout = async (mode: string, nextTree: LayoutNode) => {
+    editValue('enabled_layouts', enabledFor(mode, nextTree))
+    editValue('startup_session', `sessions/${mode}.session`)
+    if (!isTauri()) return
+    try { await backend.write(`sessions/${mode}.session`, sessionFor(nextTree, mode)) } catch (error) { toast(String(error)) }
+  }
+  const updateTree = (next: LayoutNode, commit = false) => {
+    treeRef.current = next
+    const stored = { ...trees, [layoutRef.current]: next }
+    remember(stored)
+    if (commit) void commitLayout(layoutRef.current, next)
+  }
   const fileRef = useRef<HTMLInputElement>(null)
   const paneFileRef = useRef<HTMLInputElement>(null)
   const [remoteImage, setRemoteImage] = useState('')
   const [localImage, setLocalImage] = useState('')
   const [panePath, setPanePath] = useState(() => localStorage.getItem('kitty-builder-pane-image') ?? '')
   const [paneUrl, setPaneUrl] = useState('')
+  const [paneSize, setPaneSize] = useState<ImageSize>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('kitty-builder-pane-size') ?? '') as ImageSize
+      if (saved.w > 0 && saved.h > 0) return saved
+    } catch { /* keep the default size */ }
+    return { w: 220, h: 160 }
+  })
   const configuredImage = plainPath(imagePath.raw)
 
   useEffect(() => {
@@ -286,10 +384,13 @@ export function BuilderPage() {
       return
     }
     const kitten = status?.kittyPath?.replace(/kitty$/, 'kitten') || 'kitten'
-    const script = `#!/bin/sh\nimage="\${KITTY_BUILDER_PANE_IMAGE:-}"\nimage="\${image#\\"}"\nimage="\${image%\\"}"\nreal="\${KITTY_BUILDER_SHELL:-/bin/zsh}"\nkitten='${kitten.replaceAll("'", '')}'\nif [ -n "$image" ] && [ -f "$image" ]; then\n  if [ ! -x "$kitten" ]; then kitten=kitten; fi\n  "$kitten" icat --stdin=no --align left "$image" || true\nfi\nexec "$real" -l\n`
+    const script = `#!/bin/sh\nimage="\${KITTY_BUILDER_PANE_IMAGE:-}"\nimage="\${image#\\"}"\nimage="\${image%\\"}"\ncols="\${KITTY_BUILDER_PANE_COLS:-24}"\nrows="\${KITTY_BUILDER_PANE_ROWS:-12}"\nreal="\${KITTY_BUILDER_SHELL:-/bin/zsh}"\nkitten='${kitten.replaceAll("'", '')}'\nif [ -n "$image" ] && [ -f "$image" ]; then\n  if [ ! -x "$kitten" ]; then kitten=kitten; fi\n  "$kitten" icat --stdin=no --align left --scale-up --place "\${cols}x\${rows}@0x1" "$image" || true\nfi\nexec "$real" -l\n`
     await backend.write('builder-shell', script)
     updateDocument((document) => {
       upsertEnv(document, 'KITTY_BUILDER_PANE_IMAGE', selected)
+      const { cols, rows } = cellsFor(paneSize)
+      upsertEnv(document, 'KITTY_BUILDER_PANE_COLS', String(cols))
+      upsertEnv(document, 'KITTY_BUILDER_PANE_ROWS', String(rows))
       const shell = valuesOf(document, 'shell').at(-1) ?? ''
       if (!shell.includes('builder-shell')) {
         if (shell.trim()) upsertEnv(document, 'KITTY_BUILDER_SHELL', shell.trim().split(/\s+/)[0] ?? shell.trim())
@@ -322,6 +423,17 @@ export function BuilderPage() {
       toast(String(error))
     }
   }
+  const resizePane = (width: number, height: number, done: boolean) => {
+    const next = { w: width, h: height }
+    setPaneSize(next)
+    if (!done) return
+    localStorage.setItem('kitty-builder-pane-size', JSON.stringify(next))
+    const { cols, rows } = cellsFor(next)
+    updateDocument((document) => {
+      upsertEnv(document, 'KITTY_BUILDER_PANE_COLS', String(cols))
+      upsertEnv(document, 'KITTY_BUILDER_PANE_ROWS', String(rows))
+    })
+  }
   const clearPaneImage = () => {
     localStorage.removeItem('kitty-builder-pane-image')
     if (panePath.startsWith('blob:')) URL.revokeObjectURL(panePath)
@@ -329,6 +441,8 @@ export function BuilderPage() {
     setPaneUrl('')
     updateDocument((document) => {
       removeEnv(document, 'KITTY_BUILDER_PANE_IMAGE')
+      removeEnv(document, 'KITTY_BUILDER_PANE_COLS')
+      removeEnv(document, 'KITTY_BUILDER_PANE_ROWS')
       removeEnv(document, 'KITTY_BUILDER_SHELL')
       document.nodes = document.nodes.filter((node) => node.type !== 'directive' || node.key !== 'shell' || !node.value.includes('builder-shell'))
     })
@@ -368,9 +482,20 @@ export function BuilderPage() {
         <section className="card card-pad">
           <b>Layout</b>
           <div className="choice-grid">
-            {windowLayouts.map((item) => (
-              <button key={item} className={layout === item ? 'active' : ''} type="button" onClick={() => editValue('enabled_layouts', layoutOrder(item))}>{item}</button>
+            {[...windowLayouts, 'custom'].map((item) => (
+              <button key={item} className={layout === item ? 'active' : ''} type="button" onClick={() => {
+                const next = trees[item] ?? cloneTree(presetTrees[item] ?? presetTrees.custom)
+                setSelectedPane(firstPane(next))
+                remember({ ...trees, [item]: next })
+                void commitLayout(item, next)
+              }}>{item}</button>
             ))}
+          </div>
+          <p className="card-desc">Drag the dividers in the preview. Custom starts empty: select a pane, then split it.</p>
+          <div className="split-fields">
+            <button className="btn" type="button" disabled={!selectedPane} onClick={() => updateTree(splitPane(tree, selectedPane, 'x'), true)}>Split right</button>
+            <button className="btn" type="button" disabled={!selectedPane} onClick={() => updateTree(splitPane(tree, selectedPane, 'y'), true)}>Split down</button>
+            <button className="btn" type="button" disabled={!selectedPane || paneCount(tree) < 2} onClick={() => updateTree(removePane(tree, selectedPane), true)}>Remove</button>
           </div>
           <div className="field"><span>Background image</span>
             <div className="split-fields">
@@ -383,7 +508,7 @@ export function BuilderPage() {
                 <button className="btn" type="button" onClick={() => void choosePaneImage()}>Choose image</button>
                 <button className="btn" type="button" disabled={!panePath} onClick={clearPaneImage}>Clear</button>
               </div>
-              <p className="card-desc">Optional. After saving, it is shown when a new kitty window opens.</p>
+              <p className="card-desc">PNG, JPEG, WebP or GIF. Drag the corner to resize, then save and open a new kitty window.</p>
             </div>
             <input ref={paneFileRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
               const file = event.target.files?.[0]
@@ -497,7 +622,9 @@ export function BuilderPage() {
           </div>
         </section>
       </div>
-      <TerminalPreview imageUrl={remoteImage || localImage} paneUrl={paneUrl} />
+      <PaneImageContext.Provider value={{ url: paneUrl, size: paneSize, resize: resizePane }}>
+        <TerminalPreview imageUrl={remoteImage || localImage} paneUrl={paneUrl} tree={tree} selected={selectedPane} onSelect={setSelectedPane} onRatio={(id, ratio) => updateTree(setRatio(treeRef.current, id, ratio))} onCommit={() => void commitLayout(layoutRef.current, treeRef.current)} />
+      </PaneImageContext.Provider>
     </div>
   )
 }

@@ -44,7 +44,7 @@ export const backend = {
     const selected = await dialog.open({
       title: 'Background image',
       multiple: false,
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      filters: [{ name: 'Images', extensions: ['gif', 'png', 'jpg', 'jpeg', 'webp', 'image/gif'] }],
     })
     return typeof selected === 'string' ? selected : null
   },

@@ -466,8 +466,8 @@ fn preview_image(path: String) -> Result<String, String> {
     let path = PathBuf::from(path);
     let mime = image_mime(&path)?;
     let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
-    if !metadata.is_file() || metadata.len() > 12 * 1024 * 1024 {
-        return Err("Choose an image smaller than 12 MB".into());
+    if !metadata.is_file() || metadata.len() > 32 * 1024 * 1024 {
+        return Err("Choose an image smaller than 32 MB".into());
     }
     let bytes = fs::read(&path).map_err(|error| error.to_string())?;
     Ok(format!("data:{mime};base64,{}", encode_base64(&bytes)))

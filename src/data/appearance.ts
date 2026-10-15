@@ -39,8 +39,10 @@ export const imageLayouts = ['cscaled', 'scaled', 'tiled', 'mirror-tiled', 'clam
 export const windowLayouts = ['tall', 'fat', 'grid', 'horizontal', 'vertical', 'stack'] as const
 
 export function activeLayout(value: string) {
-  const first = value.trim().split(/[\s,]+/)[0]
-  return !first || first === '*' ? 'tall' : first
+  const token = value.trim().split(/[\s,]+/)[0]?.split(':')[0]
+  if (!token || token === '*') return 'tall'
+  if (token === 'splits') return 'custom'
+  return token
 }
 
 export function layoutOrder(layout: string) {
