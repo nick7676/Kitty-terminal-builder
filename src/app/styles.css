@@ -206,6 +206,16 @@ h2 { font-size: 16px; }
 .swatch b { color: var(--muted); font-size: 11px; font-weight: 600; }
 .swatch .input { height: 30px; font-family: ui-monospace, monospace; font-size: 12px; }
 .swatch.compact b { font-size: 10px; }
+.overlay-list, .widget-editors { display: grid; gap: 10px; margin-top: 12px; }
+.overlay-list-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; }
+.overlay-list-item span, .overlay-list-item small { display: block; }
+.overlay-list-item small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.widgets-page { max-width: 980px; }
+.widget-catalog { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+.widget-choice { display: grid; gap: 5px; padding: 14px; color: var(--text); text-align: left; }
+.widget-choice span { color: var(--muted); font-size: 11px; }
+.widget-editors { grid-template-columns: 1fr 1fr; }
+.widget-editors input[type="color"] { width: 100%; height: 38px; border: 1px solid var(--border); border-radius: 7px; background: #0f0e12; }
 
 .preview-stage {
   display: grid; place-items: center; min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 16px;
@@ -239,6 +249,17 @@ h2 { font-size: 16px; }
 .tab-badges { display: flex; gap: 6px; margin-left: auto; }
 .tab-badges i { padding: 2px 8px; border-radius: 999px; color: #1a1d2a; font-size: 11px; font-style: normal; }
 .term-canvas { position: relative; display: flex; flex: 1; min-height: 340px; overflow: hidden; background-color: transparent; background-position: center; background-repeat: no-repeat; }
+.terminal-scroll-layer { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; overflow: auto; transition: padding .18s ease; }
+.overlay-frame { position: absolute; z-index: 5; overflow: hidden; border: 1px solid #ffffff30; border-radius: 9px; background: #141118; box-shadow: 0 8px 24px #0008; cursor: move; touch-action: none; }
+.overlay-frame.pinned { z-index: 7; border-color: #c38bec88; }
+.overlay-frame.selected-overlay { box-shadow: 0 0 0 2px #c38bec, 0 8px 24px #0008; }
+.overlay-pin { position: absolute; top: 5px; right: 5px; z-index: 3; width: 24px; height: 24px; padding: 0; border: 1px solid #ffffff2b; border-radius: 50%; background: #151119cc; color: #e5c9f5; cursor: pointer; }
+.overlay-resize { position: absolute; right: 0; bottom: 0; z-index: 3; width: 18px; height: 18px; border-radius: 6px 0 0; background: #c38bec; cursor: nwse-resize; }
+.overlay-image { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.overlay-missing { display: grid; place-items: center; width: 100%; height: 100%; color: var(--ansi-dim); font-size: 11px; }
+.terminal-widget { display: grid; align-content: center; width: 100%; height: 100%; padding: 14px; }
+.terminal-widget small { opacity: .68; text-transform: uppercase; letter-spacing: .12em; }
+.terminal-widget b { font-size: 1.7em; }
 .term.fit-cover .term-canvas { background-size: cover; }
 .term.fit-contain .term-canvas { background-size: contain; }
 .term.fit-tile .term-canvas { background-size: 150px; background-repeat: repeat; }
@@ -301,4 +322,5 @@ h2 { font-size: 16px; }
   .two-cols, .setup-grid, .vision, .builder { grid-template-columns: 1fr; }
   .builder { height: auto; overflow: visible; }
   .catalog { grid-template-columns: 1fr; }
+  .widget-catalog, .widget-editors { grid-template-columns: 1fr; }
 }

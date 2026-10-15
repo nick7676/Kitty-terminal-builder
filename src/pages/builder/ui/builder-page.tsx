@@ -10,7 +10,7 @@ export function BuilderPage() {
   return (
     <div className="builder">
       <BuilderControls layout={layout} images={images} />
-      <TerminalPreview imageUrl={images.previewUrl} paneUrl={images.paneUrl} paneSize={images.paneSize} onResize={images.resizePane} tree={layout.tree} selected={layout.selectedPane} onSelect={layout.setSelectedPane} onRatio={layout.onRatio} onCommit={layout.onCommit} />
+      <TerminalPreview imageUrl={images.previewUrl} tree={layout.tree} selected={layout.selectedPane} onSelect={layout.setSelectedPane} onRatio={layout.onRatio} onCommit={layout.onCommit} />
     </div>
   )
 }

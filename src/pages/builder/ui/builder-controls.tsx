@@ -99,9 +99,17 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
           <Field label="Pane image">
             <div className="split-fields">
               <Button onClick={() => void images.choosePaneImage()}>Choose image</Button>
-              <Button disabled={!images.panePath} onClick={images.clearPaneImage}>Clear</Button>
+              <span />
             </div>
-            <p className="card-desc">PNG, JPEG, WebP or GIF. Drag the corner to resize, then save and open a new kitty window.</p>
+            <p className="card-desc">PNG, JPEG, WebP or GIF. Every image can be moved, resized and pinned from the preview.</p>
+            <div className="overlay-list">
+              {images.overlayImages.map((image, index) => (
+                <div className="overlay-list-item" key={image.id}>
+                  <span>Image {index + 1}<small>{image.placement.pinned ? `Pinned ${image.placement.edge}` : 'Scrolls with content'}</small></span>
+                  <Button size="sm" onClick={() => images.removeImage(image.id)}>Remove</Button>
+                </div>
+              ))}
+            </div>
           </Field>
           <ImageFileInput inputRef={images.paneFileRef} onFile={images.onPaneFile} />
           <ImageFileInput inputRef={images.fileRef} onFile={images.onLocalFile} />
@@ -129,6 +137,7 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
       </Panel>
 
       <Panel title="Type & cursor" extra={<Button size="sm" onClick={() => resetKeys([...styleKeys])}>Clear style</Button>}>
+        <ColorField name="foreground" label="Terminal text" fallback="#dddddd" />
         <TextField label="Font family" list="kitty-fonts" suggestions={fontChoices} value={font.raw} placeholder="monospace" onChange={(value) => editValue('font_family', value)} />
         <div className="split-fields">
           <TextField label="Bold" value={bold.raw} placeholder="auto" onChange={(value) => editValue('bold_font', value)} />
@@ -157,7 +166,7 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
 
       <Panel title="Palette">
         <div className="palette-grid">
-          {surfaceSlots.map(([key, label, fallback]) => <ColorField key={key} name={key} label={label} fallback={fallback} />)}
+          {surfaceSlots.filter(([key]) => key !== 'foreground').map(([key, label, fallback]) => <ColorField key={key} name={key} label={label} fallback={fallback} />)}
         </div>
         <div className="ansi-grid">
           {ansiSlots.map(([key, label]) => <ColorField key={key} name={key} label={label} fallback={presets[0]?.values[key] ?? '#888888'} compact />)}

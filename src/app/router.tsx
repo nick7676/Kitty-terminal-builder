@@ -5,6 +5,7 @@ import { FilesPage } from '@/pages/files'
 import { IntegrationsPage } from '@/pages/integrations'
 import { OverviewPage } from '@/pages/overview'
 import { SetupPage } from '@/pages/setup'
+import { WidgetsPage } from '@/pages/widgets'
 import { Shell } from '@/widgets/app-shell'
 
 const rootRoute = createRootRoute({
@@ -17,8 +18,9 @@ const configRoute = createRoute({ getParentRoute: () => rootRoute, path: '/confi
 const filesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/files', component: FilesPage })
 const integrationsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/integrations', component: IntegrationsPage })
 const setupRoute = createRoute({ getParentRoute: () => rootRoute, path: '/setup', component: SetupPage })
+const widgetsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/widgets', component: WidgetsPage })
 
-const routeTree = rootRoute.addChildren([overviewRoute, builderRoute, configRoute, filesRoute, integrationsRoute, setupRoute])
+const routeTree = rootRoute.addChildren([overviewRoute, builderRoute, widgetsRoute, configRoute, filesRoute, integrationsRoute, setupRoute])
 
 export const router = createRouter({ routeTree, history: createHashHistory() })
 

@@ -2,6 +2,7 @@ mod command;
 mod config;
 mod image;
 mod kitty;
+mod overlay;
 mod packages;
 mod paths;
 mod status;
@@ -31,6 +32,7 @@ pub fn run() {
             kitty::get_option_registry,
             kitty::reload_kitty,
             image::preview_image,
+            overlay::apply_overlays,
             packages::detect_commands,
             packages::list_managed_packages,
             packages::run_package_action,

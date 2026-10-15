@@ -49,6 +49,7 @@ export const backend = {
     return typeof selected === 'string' ? selected : null
   },
   imagePreview: (path: string) => invoke<string>('preview_image', { path }),
+  applyOverlays: (spec: unknown) => invoke<{ shellPath: string; sessionPath: string }>('apply_overlays', { spec }),
   packageAction: (manager: string, action: string, packageName: string) =>
     invoke<CommandResult>('run_package_action', { manager, action, package: packageName }),
   detectCommands: (commands: string[]) => invoke<Record<string, boolean>>('detect_commands', { commands }),

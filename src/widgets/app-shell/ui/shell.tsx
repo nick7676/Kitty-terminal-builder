@@ -9,6 +9,7 @@ import { CheckList, Pill } from '@/shared/ui'
 const nav = [
   { to: '/', label: 'Overview', icon: '⌂' },
   { to: '/builder', label: 'Builder', icon: '▣' },
+  { to: '/widgets', label: 'Widgets', icon: '◫' },
   { to: '/config/$section', params: { section: 'fonts' }, label: 'All settings', icon: '⚙' },
   { to: '/files', label: 'Files & profiles', icon: '▤' },
   { to: '/integrations', label: 'Integrations', icon: '◇' },
@@ -96,7 +97,7 @@ export function Shell({ children }: { children: ReactNode }) {
               { label: 'Save and reload', detail: <code>⌘/Ctrl S</code> },
               { label: 'Focus search', detail: <code>⌘/Ctrl K</code> },
               { label: 'Reload kitty', detail: <code>⌘/Ctrl ⇧ R</code> },
-              { label: 'Navigate pages', detail: <code>⌘/Ctrl 1–6</code> },
+              { label: 'Navigate pages', detail: <code>⌘/Ctrl 1–7</code> },
               { label: 'Close this panel', detail: <code>Esc</code> },
             ]} />
           </div>
