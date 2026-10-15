@@ -1,11 +1,11 @@
 import { createHashHistory, createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
-import { Shell } from './shell'
-import { BuilderPage } from '../pages/builder'
-import { ConfigPage } from '../pages/config'
-import { FilesPage } from '../pages/files'
-import { IntegrationsPage } from '../pages/integrations'
-import { OverviewPage } from '../pages/overview'
-import { SetupPage } from '../pages/setup'
+import { BuilderPage } from '@/pages/builder'
+import { ConfigPage } from '@/pages/config'
+import { FilesPage } from '@/pages/files'
+import { IntegrationsPage } from '@/pages/integrations'
+import { OverviewPage } from '@/pages/overview'
+import { SetupPage } from '@/pages/setup'
+import { Shell } from '@/widgets/app-shell'
 
 const rootRoute = createRootRoute({
   component: () => <Shell><Outlet /></Shell>,
