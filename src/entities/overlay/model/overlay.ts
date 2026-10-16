@@ -65,7 +65,7 @@ export function normalizePlacement(value: Placement, width: number, height: numb
   return { ...value, x, y: height - h, w, h, edge }
 }
 
-type PersistedState = { images: Omit<OverlayImage, 'url'>[]; widgets: TerminalWidget[] }
+type PersistedState = { images: Omit<OverlayImage, 'url'>[]; widgets: TerminalWidget[]; stageWidth?: number; stageHeight?: number }
 
 function loadState(): PersistedState {
   try {
@@ -90,29 +90,36 @@ interface OverlayState {
   updatePlacement: (id: string, next: Placement) => void
   updateWidget: (id: string, patch: Partial<Omit<TerminalWidget, 'id' | 'placement'>>) => void
   setImageUrl: (id: string, url: string) => void
+  stageWidth: number
+  stageHeight: number
+  setStage: (width: number, height: number) => void
 }
 
-function persist(images: OverlayImage[], widgets: TerminalWidget[]) {
+function persist(images: OverlayImage[], widgets: TerminalWidget[], stageWidth: number, stageHeight: number) {
   localStorage.setItem('kitty-builder-overlays', JSON.stringify({
     images: images.map(({ url: _url, ...image }) => image),
     widgets,
+    stageWidth,
+    stageHeight,
   }))
 }
 
 export const useOverlays = create<OverlayState>((set) => ({
   images: initial.images.map((image) => ({ ...image, url: image.path.startsWith('blob:') ? image.path : '' })),
   widgets: initial.widgets,
+  stageWidth: initial.stageWidth ?? 0,
+  stageHeight: initial.stageHeight ?? 0,
   addImage: (path, url = '') => set((state) => {
     const id = crypto.randomUUID()
     const images = [...state.images, { id, path, url, placement: placement(id, false) }]
-    persist(images, state.widgets)
+    persist(images, state.widgets, state.stageWidth, state.stageHeight)
     return { images }
   }),
   removeImage: (id) => set((state) => {
     const removed = state.images.find((image) => image.id === id)
     if (removed?.url.startsWith('blob:')) URL.revokeObjectURL(removed.url)
     const images = state.images.filter((image) => image.id !== id)
-    persist(images, state.widgets)
+    persist(images, state.widgets, state.stageWidth, state.stageHeight)
     return { images }
   }),
   addWidget: (kind) => set((state) => {
@@ -122,28 +129,35 @@ export const useOverlays = create<OverlayState>((set) => ({
       id, kind, label: metadata?.label ?? kind, foreground: '#f3e9fb', background: '#21182a',
       clock24: true, placement: placement(id, true),
     }]
-    persist(state.images, widgets)
+    persist(state.images, widgets, state.stageWidth, state.stageHeight)
     return { widgets }
   }),
   removeWidget: (id) => set((state) => {
     const widgets = state.widgets.filter((widget) => widget.id !== id)
-    persist(state.images, widgets)
+    persist(state.images, widgets, state.stageWidth, state.stageHeight)
     return { widgets }
   }),
   updatePlacement: (id, next) => set((state) => {
     const images = state.images.map((image) => image.id === id ? { ...image, placement: next } : image)
     const widgets = state.widgets.map((widget) => widget.id === id ? { ...widget, placement: next } : widget)
-    persist(images, widgets)
+    persist(images, widgets, state.stageWidth, state.stageHeight)
     return { images, widgets }
   }),
   updateWidget: (id, patch) => set((state) => {
     const widgets = state.widgets.map((widget) => widget.id === id ? { ...widget, ...patch } : widget)
-    persist(state.images, widgets)
+    persist(state.images, widgets, state.stageWidth, state.stageHeight)
     return { widgets }
   }),
   setImageUrl: (id, url) => set((state) => ({
     images: state.images.map((image) => image.id === id ? { ...image, url } : image),
   })),
+  setStage: (width, height) => set((state) => {
+    const stageWidth = Math.round(width)
+    const stageHeight = Math.round(height)
+    if (Math.abs(state.stageWidth - stageWidth) < 4 && Math.abs(state.stageHeight - stageHeight) < 4) return state
+    persist(state.images, state.widgets, stageWidth, stageHeight)
+    return { stageWidth, stageHeight }
+  }),
 }))
 
 export function overlayInsets(items: Placement[]) {

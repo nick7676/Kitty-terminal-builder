@@ -6,6 +6,9 @@ import { backend, isTauri } from '@/shared/api'
 export function useOverlayRuntime() {
   const images = useOverlays((state) => state.images)
   const widgets = useOverlays((state) => state.widgets)
+  const stageWidth = useOverlays((state) => state.stageWidth)
+  const stageHeight = useOverlays((state) => state.stageHeight)
+  const background = useWorkspace((state) => valuesOf(state.document, 'background').at(-1) ?? '')
   const setImageUrl = useOverlays((state) => state.setImageUrl)
   const loading = useWorkspace((state) => state.loading)
   const updateDocument = useWorkspace((state) => state.updateDocument)
@@ -25,7 +28,7 @@ export function useOverlayRuntime() {
       const persistentImages = images
         .filter((image) => image.path.startsWith('/'))
         .map(({ url: _url, ...image }) => image)
-      void backend.applyOverlays({ images: persistentImages, widgets }).then((result) => {
+      void backend.applyOverlays({ images: persistentImages, widgets, stageWidth, stageHeight, background }).then((result) => {
         updateDocument((document) => {
           const hasOverlays = persistentImages.length + widgets.length > 0
           if (!hasOverlays) {
@@ -46,5 +49,5 @@ export function useOverlayRuntime() {
       }).catch((error) => toast(String(error)))
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [images, loading, widgets, toast, updateDocument])
+  }, [background, images, loading, stageHeight, stageWidth, widgets, toast, updateDocument])
 }

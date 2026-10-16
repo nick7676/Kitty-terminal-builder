@@ -1,4 +1,4 @@
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { ansiSlots, cssColor, presets } from '@/entities/appearance'
 import type { LayoutNode } from '@/entities/appearance'
 import { overlayInsets, useOverlays, type TerminalWidget } from '@/entities/overlay'
@@ -181,6 +181,20 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
   const art = Boolean(imageUrl)
   const caret = `caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`
   const insets = overlayInsets([...overlayImages.map((item) => item.placement), ...terminalWidgets.map((item) => item.placement)])
+  const stageRef = useRef<HTMLDivElement>(null)
+  const setStage = useOverlays((state) => state.setStage)
+  useEffect(() => {
+    const node = stageRef.current
+    if (!node) return
+    const publish = () => {
+      const rect = node.getBoundingClientRect()
+      if (rect.width > 40 && rect.height > 40) setStage(rect.width, rect.height)
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [setStage])
 
   return (
     <div className="preview-stage">
@@ -224,7 +238,7 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
               <span className="term-tab">nvim</span>
             </div>
           )}
-          <div className="term-canvas overlay-stage" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
+          <div ref={stageRef} className="term-canvas overlay-stage" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
             <div className="term-wash" />
             <div className="terminal-scroll-layer" style={{ paddingLeft: insets.left, paddingRight: insets.right, paddingTop: insets.top, paddingBottom: insets.bottom }}>
               <SplitView node={tree} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} dots={ansi} />
