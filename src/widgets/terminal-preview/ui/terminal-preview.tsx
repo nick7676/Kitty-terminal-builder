@@ -157,6 +157,9 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
   const blur = useOption('background_blur', '0')
   const tint = useOption('background_tint', '0')
   const padding = useOption('window_padding_width', '0')
+  const borderWidth = useOption('window_border_width', '1')
+  const activeBorder = useOption('active_border_color', '#00ff00')
+  const inactiveBorder = useOption('inactive_border_color', '#cccccc')
   const tabStyle = useOption('tab_bar_style', 'fade')
   const tabEdge = useOption('tab_bar_edge', 'bottom')
   const decorations = useOption('hide_window_decorations', 'no')
@@ -208,6 +211,9 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
             ['--term-blur' as string]: `${Math.max(0, Number.parseFloat(blur.effective) || 0)}px`,
             ['--term-tint' as string]: String(Math.min(0.85, Math.max(0, Number.parseFloat(tint.effective) || 0))),
             ['--term-pad' as string]: `${Math.min(28, Math.max(4, Number.parseFloat(padding.effective) || 8))}px`,
+            ['--split-border' as string]: `${Math.min(16, Math.max(0, Number.parseFloat(borderWidth.effective) || 0))}px`,
+            ['--split-border-color' as string]: cssColor(inactiveBorder.effective, '#cccccc'),
+            ['--split-border-active' as string]: cssColor(activeBorder.effective, '#00ff00'),
             ['--term-font' as string]: font.effective === 'monospace' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : `"${font.effective}", ui-monospace, monospace`,
             ['--term-size' as string]: `${fontSize}px`,
             ['--tab-active' as string]: cssColor(activeTab.effective, '#eeeeee'),

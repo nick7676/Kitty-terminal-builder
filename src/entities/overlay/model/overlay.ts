@@ -83,6 +83,9 @@ const initial = loadState()
 interface OverlayState {
   images: OverlayImage[]
   widgets: TerminalWidget[]
+  savedImages: Omit<OverlayImage, 'url'>[]
+  savedWidgets: TerminalWidget[]
+  layoutDirty: boolean
   addImage: (path: string, url?: string) => void
   removeImage: (id: string) => void
   addWidget: (kind: WidgetKind) => void
@@ -93,6 +96,12 @@ interface OverlayState {
   stageWidth: number
   stageHeight: number
   setStage: (width: number, height: number) => void
+  markLayoutSaved: () => void
+  revertLayout: () => void
+}
+
+function samePlacement(left: Placement, right: Placement) {
+  return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h && left.pinned === right.pinned && left.edge === right.edge
 }
 
 function persist(images: OverlayImage[], widgets: TerminalWidget[], stageWidth: number, stageHeight: number) {
@@ -104,23 +113,28 @@ function persist(images: OverlayImage[], widgets: TerminalWidget[], stageWidth: 
   }))
 }
 
+const loadedImages = initial.images.map((image) => ({ ...image, url: image.path.startsWith('blob:') ? image.path : '' }))
+
 export const useOverlays = create<OverlayState>((set) => ({
-  images: initial.images.map((image) => ({ ...image, url: image.path.startsWith('blob:') ? image.path : '' })),
+  images: loadedImages,
   widgets: initial.widgets,
+  savedImages: initial.images,
+  savedWidgets: initial.widgets,
+  layoutDirty: false,
   stageWidth: initial.stageWidth ?? 0,
   stageHeight: initial.stageHeight ?? 0,
   addImage: (path, url = '') => set((state) => {
     const id = crypto.randomUUID()
     const images = [...state.images, { id, path, url, placement: placement(id, false) }]
     persist(images, state.widgets, state.stageWidth, state.stageHeight)
-    return { images }
+    return { images, layoutDirty: true }
   }),
   removeImage: (id) => set((state) => {
     const removed = state.images.find((image) => image.id === id)
     if (removed?.url.startsWith('blob:')) URL.revokeObjectURL(removed.url)
     const images = state.images.filter((image) => image.id !== id)
     persist(images, state.widgets, state.stageWidth, state.stageHeight)
-    return { images }
+    return { images, layoutDirty: true }
   }),
   addWidget: (kind) => set((state) => {
     const id = crypto.randomUUID()
@@ -130,23 +144,25 @@ export const useOverlays = create<OverlayState>((set) => ({
       clock24: true, placement: placement(id, true),
     }]
     persist(state.images, widgets, state.stageWidth, state.stageHeight)
-    return { widgets }
+    return { widgets, layoutDirty: true }
   }),
   removeWidget: (id) => set((state) => {
     const widgets = state.widgets.filter((widget) => widget.id !== id)
     persist(state.images, widgets, state.stageWidth, state.stageHeight)
-    return { widgets }
+    return { widgets, layoutDirty: true }
   }),
   updatePlacement: (id, next) => set((state) => {
+    const current = [...state.images, ...state.widgets].find((item) => item.id === id)
+    if (current && samePlacement(current.placement, next)) return state
     const images = state.images.map((image) => image.id === id ? { ...image, placement: next } : image)
     const widgets = state.widgets.map((widget) => widget.id === id ? { ...widget, placement: next } : widget)
     persist(images, widgets, state.stageWidth, state.stageHeight)
-    return { images, widgets }
+    return { images, widgets, layoutDirty: true }
   }),
   updateWidget: (id, patch) => set((state) => {
     const widgets = state.widgets.map((widget) => widget.id === id ? { ...widget, ...patch } : widget)
     persist(state.images, widgets, state.stageWidth, state.stageHeight)
-    return { widgets }
+    return { widgets, layoutDirty: true }
   }),
   setImageUrl: (id, url) => set((state) => ({
     images: state.images.map((image) => image.id === id ? { ...image, url } : image),
@@ -157,6 +173,19 @@ export const useOverlays = create<OverlayState>((set) => ({
     if (Math.abs(state.stageWidth - stageWidth) < 4 && Math.abs(state.stageHeight - stageHeight) < 4) return state
     persist(state.images, state.widgets, stageWidth, stageHeight)
     return { stageWidth, stageHeight }
+  }),
+  markLayoutSaved: () => set((state) => ({
+    layoutDirty: false,
+    savedImages: state.images.map(({ url: _url, ...image }) => image),
+    savedWidgets: state.widgets,
+  })),
+  revertLayout: () => set((state) => {
+    const images = state.savedImages.map((image) => ({
+      ...image,
+      url: state.images.find((item) => item.id === image.id)?.url ?? (image.path.startsWith('blob:') ? image.path : ''),
+    }))
+    persist(images, state.savedWidgets, state.stageWidth, state.stageHeight)
+    return { images, widgets: state.savedWidgets, layoutDirty: false }
   }),
 }))
 

@@ -1,40 +1,51 @@
-import { isTauri } from '@/shared/api'
+import { useOverlays } from '@/entities/overlay'
 import { isDirtyState, useWorkspace } from '@/entities/workspace'
+import { isTauri } from '@/shared/api'
 
 export function useDirty() {
-  return useWorkspace((state) => isDirtyState(state.document, state.original))
+  const configDirty = useWorkspace((state) => isDirtyState(state.document, state.original))
+  const layoutDirty = useOverlays((state) => state.layoutDirty)
+  return configDirty || layoutDirty
+}
+
+function pendingChanges() {
+  const state = useWorkspace.getState()
+  return isDirtyState(state.document, state.original) || useOverlays.getState().layoutDirty
 }
 
 export function confirmDiscard(message: string) {
-  const state = useWorkspace.getState()
-  return !isDirtyState(state.document, state.original) || confirm(message)
+  return !pendingChanges() || confirm(message)
 }
 
 function confirmOverwrite(file: string) {
-  return confirm(`Write ${file}, create a backup and reload kitty?`)
+  const configDirty = isDirtyState(useWorkspace.getState().document, useWorkspace.getState().original)
+  return confirm(configDirty ? `Write ${file}, create a backup and reload kitty?` : 'Reload kitty with the new overlay layout?')
 }
 
 export async function confirmAndSave() {
+  if (!isTauri() || !pendingChanges()) return
   const state = useWorkspace.getState()
-  if (!isTauri() || !isDirtyState(state.document, state.original)) return
   if (!confirmOverwrite(state.activeFile)) return
-  await state.saveAndReload()
+  if (isDirtyState(state.document, state.original)) await state.saveAndReload()
+  else await state.reloadKitty()
+  useOverlays.getState().markLayoutSaved()
 }
 
 export function useSaveDocument(after?: () => Promise<void>) {
-  const activeFile = useWorkspace((state) => state.activeFile)
-  const saveAndReload = useWorkspace((state) => state.saveAndReload)
-  const discard = useWorkspace((state) => state.discard)
+  const discardConfig = useWorkspace((state) => state.discard)
   const toast = useWorkspace((state) => state.toast)
   const dirty = useDirty()
   const save = async () => {
-    if (!confirmOverwrite(activeFile)) return
     try {
-      await saveAndReload()
-      await after?.()
+      await confirmAndSave()
+      if (!useOverlays.getState().layoutDirty) await after?.()
     } catch (error) {
       toast(`Save failed:\n${String(error)}`)
     }
+  }
+  const discard = () => {
+    discardConfig()
+    useOverlays.getState().revertLayout()
   }
   return { dirty, discard, save }
 }

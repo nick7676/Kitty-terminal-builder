@@ -22,7 +22,8 @@ export const surfaceSlots = [
 export const styleKeys = [
   'font_family', 'bold_font', 'italic_font', 'bold_italic_font', 'font_size',
   'cursor_shape', 'cursor_blink_interval', 'background_opacity', 'background_blur', 'background_tint',
-  'background_image', 'background_image_layout', 'window_padding_width', 'hide_window_decorations',
+  'background_image', 'background_image_layout', 'window_padding_width', 'window_border_width',
+  'active_border_color', 'inactive_border_color', 'draw_minimal_borders', 'hide_window_decorations',
   'tab_bar_style', 'tab_bar_edge', 'tab_bar_align', 'tab_separator', 'tab_title_template', 'tab_bar_min_tabs',
   'enabled_layouts', 'startup_session',
 ] as const

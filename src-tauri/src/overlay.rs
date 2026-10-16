@@ -104,17 +104,26 @@ clock24="$3"
 fg="$4"
 bg="$5"
 printf '\033[?25l'
-if [ -n "$bg" ]; then printf '\033]11;%s\007' "$bg"; fi
-if [ -n "$fg" ]; then printf '\033]10;%s\007' "$fg"; fi
+paint() {
+  if [ -n "$bg" ]; then printf '\033]11;%s\007\033]21;background=%s\007' "$bg" "$bg"; fi
+  if [ -n "$fg" ]; then printf '\033]10;%s\007\033]21;foreground=%s\007' "$fg" "$fg"; fi
+}
 while :; do
-  clear
-  printf '\033[2m%s\033[0m\n' "$label"
   case "$kind" in
-    clock) if [ "$clock24" = true ]; then date '+%H:%M:%S'; else date '+%I:%M:%S %p'; fi ;;
-    cpu) top -l 1 2>/dev/null | awk '/CPU usage/ {print $3}' || printf 'unavailable\n' ;;
-    memory) vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); printf "%.0f MB\n", $3*4096/1048576}' || free -h 2>/dev/null | awk '/Mem:/ {print $3 " / " $2}' ;;
-    disk) df -h / | awk 'NR==2 {print $5}' ;;
+    clock) if [ "$clock24" = true ]; then value=$(date '+%H:%M:%S'); else value=$(date '+%I:%M:%S %p'); fi ;;
+    cpu) value=$(top -l 1 2>/dev/null | awk '/CPU usage/ {print $3}'); [ -n "$value" ] || value=unavailable ;;
+    memory) value=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); printf "%.0f MB", $3*4096/1048576}'); [ -n "$value" ] || value=$(free -h 2>/dev/null | awk '/Mem:/ {print $3 " / " $2}'); [ -n "$value" ] || value=unavailable ;;
+    disk) value=$(df -h / | awk 'NR==2 {print $5}') ;;
+    *) value= ;;
   esac
+  printf '\033[H\033[2J'
+  paint
+  rows=$(stty size 2>/dev/null | awk 'NR==1 {print $1}')
+  mid=$(( ${rows:-8} / 2 ))
+  [ "$mid" -lt 1 ] && mid=1
+  printf '\033[%s;1H' "$mid"
+  printf '\033[2m%s\033[22m\n' "$(printf '%s' "$label" | tr '[:lower:]' '[:upper:]')"
+  printf '\033]66;s=2;%s\033\\\n' "$value"
   sleep 1
 done
 "#
@@ -317,7 +326,7 @@ fn band(items: &mut [Placed], origin: f64, span_size: f64, by_x: bool, gaps: &mu
         cursor = (start + size).max(cursor);
     }
     let rest = origin + span_size - cursor;
-    if rest > 16.0 {
+    if !by_x && rest > 16.0 {
         *gaps += 1;
         panes.push(Pane {
             title: format!("gap{gaps}"),

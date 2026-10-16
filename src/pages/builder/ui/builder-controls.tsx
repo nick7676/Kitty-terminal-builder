@@ -49,6 +49,8 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
   const blur = useOption('background_blur', '0')
   const tint = useOption('background_tint', '0')
   const padding = useOption('window_padding_width', '0')
+  const borderWidth = useOption('window_border_width', '1')
+  const minimalBorders = useOption('draw_minimal_borders', 'no')
   const bold = useOption('bold_font', 'auto')
   const italic = useOption('italic_font', 'auto')
   const imageLayout = useOption('background_image_layout', 'cscaled')
@@ -155,6 +157,14 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
         <SliderField label="Opacity" value={opacity.effective} min={0.35} max={1} step={0.01} fallback={1} onChange={(value) => editValue('background_opacity', value)} />
         <SliderField label="Blur" value={blur.effective} min={0} max={64} step={1} onChange={(value) => editValue('background_blur', value)} />
         <SliderField label="Padding" value={padding.effective} min={0} max={40} step={1} onChange={(value) => editValue('window_padding_width', value)} />
+        <SliderField label="Separator" value={borderWidth.effective} min={0} max={16} step={0.5} fallback={1} onChange={(value) => editValue('window_border_width', value)} />
+        <div className="split-fields">
+          <ColorField name="active_border_color" label="Active line" fallback="#00ff00" />
+          <ColorField name="inactive_border_color" label="Idle line" fallback="#cccccc" />
+        </div>
+        <Field label="Separator edges">
+          <Segmented value={minimalBorders.effective === 'yes' ? 'yes' : 'no'} options={[{ value: 'yes', label: 'Between panes' }, { value: 'no', label: 'Around panes' }]} onChange={(value) => editValue('draw_minimal_borders', value)} />
+        </Field>
         <SelectField label="Tab bar" value={tabStyle.effective} onChange={(value) => editValue('tab_bar_style', value)}>
           {tabStyles.map((choice) => <option key={choice}>{choice}</option>)}
         </SelectField>
