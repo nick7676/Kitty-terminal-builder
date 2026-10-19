@@ -59,10 +59,6 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn cells(value: f64, divisor: f64, minimum: u32) -> u32 {
-    (value / divisor).round().max(f64::from(minimum)) as u32
-}
-
 fn write_executable(path: &Path, content: &str) -> Result<(), String> {
     fs::write(path, content).map_err(explain)?;
     #[cfg(unix)]
@@ -73,27 +69,32 @@ fn write_executable(path: &Path, content: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn image_script(images: &[OverlayImage]) -> String {
-    let mut lines = vec![
-        "#!/bin/sh".to_string(),
-        "kitten_bin=\"${KITTY_KITTEN:-kitten}\"".to_string(),
-    ];
-    for image in images.iter().filter(|image| !image.placement.pinned) {
-        let place = format!(
-            "{}x{}@{}x{}",
-            cells(image.placement.w, 9.0, 6),
-            cells(image.placement.h, 20.0, 4),
-            cells(image.placement.x, 9.0, 0),
-            cells(image.placement.y, 20.0, 0),
-        );
-        lines.push(format!(
-            "\"$kitten_bin\" icat --stdin=no --scale-up --place {} {} || true",
-            shell_quote(&place),
+fn image_script(images: &[OverlayImage], stage_w: f64, stage_h: f64) -> String {
+    let stage_w = if stage_w >= 80.0 { stage_w } else { 740.0 };
+    let stage_h = if stage_h >= 80.0 { stage_h } else { 420.0 };
+    let mut script = String::from("#!/bin/sh\npane=${1:-0}\ncount=${2:-2}\n");
+    script.push_str(&geometry_prelude(stage_w, stage_h));
+    script.push_str("slice=$(awk -v sw=\"$stage_w\" -v n=\"$count\" 'BEGIN { print sw / n }')\n");
+    script.push_str("origin=$(awk -v s=\"$slice\" -v p=\"$pane\" 'BEGIN { print s * p }')\n");
+    script.push_str(&place_function());
+    for image in images {
+        script.push_str(&format!(
+            "center=$(awk -v x='{x}' -v w='{w}' 'BEGIN {{ print x + (w / 2) }}')\n",
+            x = image.placement.x.max(0.0),
+            w = image.placement.w.max(1.0),
+        ));
+        script.push_str("ok=$(awk -v c=\"$center\" -v o=\"$origin\" -v s=\"$slice\" 'BEGIN { if (c >= o && c < o + s) print 1; else print 0 }')\n");
+        script.push_str(&format!(
+            "[ \"$ok\" = 1 ] && place \"$(awk -v x='{x}' -v o=\"$origin\" 'BEGIN {{ d = x - o; if (d < 0) d = 0; print d }}')\" {y} {w} {h} {}\n",
             shell_quote(&image.path),
+            x = image.placement.x.max(0.0),
+            y = image.placement.y.max(0.0),
+            w = image.placement.w.max(1.0),
+            h = image.placement.h.max(1.0),
         ));
     }
-    lines.push("exec \"${KITTY_BUILDER_SHELL:-/bin/zsh}\" -l".to_string());
-    format!("{}\n", lines.join("\n"))
+    script.push_str("printf '\\033[%s;1H' \"$prompt_row\"\nexec \"${KITTY_BUILDER_SHELL:-/bin/zsh}\" -l\n");
+    script
 }
 
 fn widget_script() -> &'static str {
@@ -165,46 +166,6 @@ fn spacer_command(background: &str) -> String {
         terminal_color(background)
     );
     format!("/bin/sh -c {}", shell_quote(&script))
-}
-
-fn image_pixels(bytes: &[u8]) -> Option<(u32, u32)> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") && bytes.len() >= 24 {
-        let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
-        let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
-        return (width > 0 && height > 0).then_some((width, height));
-    }
-    if (bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) && bytes.len() >= 10 {
-        let width = u16::from_le_bytes(bytes[6..8].try_into().ok()?) as u32;
-        let height = u16::from_le_bytes(bytes[8..10].try_into().ok()?) as u32;
-        return (width > 0 && height > 0).then_some((width, height));
-    }
-    if bytes.starts_with(&[0xFF, 0xD8]) {
-        let mut index = 2;
-        while index + 8 < bytes.len() {
-            if bytes[index] != 0xFF {
-                index += 1;
-                continue;
-            }
-            let marker = bytes[index + 1];
-            if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
-                let height = u16::from_be_bytes(bytes[index + 5..index + 7].try_into().ok()?) as u32;
-                let width = u16::from_be_bytes(bytes[index + 7..index + 9].try_into().ok()?) as u32;
-                return (width > 0 && height > 0).then_some((width, height));
-            }
-            if index + 3 >= bytes.len() {
-                break;
-            }
-            let length = u16::from_be_bytes(bytes[index + 2..index + 4].try_into().ok()?) as usize;
-            index += 2 + length.max(2);
-        }
-    }
-    None
-}
-
-fn image_aspect(path: &str) -> Option<f64> {
-    let bytes = fs::read(path).ok()?;
-    let (width, height) = image_pixels(&bytes)?;
-    Some(width as f64 / height as f64)
 }
 
 fn shell_command(root: &Path) -> String {
@@ -326,7 +287,7 @@ fn band(items: &mut [Placed], origin: f64, span_size: f64, by_x: bool, gaps: &mu
         cursor = (start + size).max(cursor);
     }
     let rest = origin + span_size - cursor;
-    if !by_x && rest > 16.0 {
+    if rest > 16.0 {
         *gaps += 1;
         panes.push(Pane {
             title: format!("gap{gaps}"),
@@ -337,25 +298,129 @@ fn band(items: &mut [Placed], origin: f64, span_size: f64, by_x: bool, gaps: &mu
     panes
 }
 
+fn geometry_prelude(stage_w: f64, stage_h: f64) -> String {
+    format!(
+        r#"kitten_bin="${{KITTY_KITTEN:-kitten}}"
+stage_w={stage_w}
+stage_h={stage_h}
+prev=""
+stable=0
+i=0
+cols=80
+rows=24
+px=800x600
+while [ "$i" -lt 40 ]; do
+  size=$(stty size 2>/dev/null || echo "24 80")
+  rows=${{size%% *}}
+  cols=${{size##* }}
+  px=$("$kitten_bin" icat --print-window-size 2>/dev/null || echo 800x600)
+  now="$cols $rows $px"
+  sane=$(awk -v c="$cols" -v r="$rows" -v px="$px" 'BEGIN {{ split(px,p,"x"); if (c<1 || r<1) {{ print 0; exit }} cw=p[1]/c; ch=p[2]/r; if (cw>=4 && cw<=40 && ch>=8 && ch<=48) print 1; else print 0 }}')
+  if [ "$sane" = 1 ] && [ "$now" = "$prev" ]; then
+    stable=$((stable+1))
+    [ "$stable" -ge 3 ] && break
+  else
+    stable=0
+  fi
+  prev=$now
+  i=$((i+1))
+  sleep 0.05
+done
+prompt_row=1
+image_id=1
+"#
+    )
+}
+
+fn place_function() -> String {
+    r#"place() {
+  iw=$(sips -g pixelWidth "$5" 2>/dev/null | awk '/pixelWidth/ { print $2 }')
+  ih=$(sips -g pixelHeight "$5" 2>/dev/null | awk '/pixelHeight/ { print $2 }')
+  [ -n "$iw" ] || iw=1
+  [ -n "$ih" ] || ih=1
+  rect=$(awk -v x="$1" -v y="$2" -v w="$3" -v h="$4" -v sw="$slice" -v sh="$stage_h" -v c="$cols" -v r="$rows" -v px="$px" -v iw="$iw" -v ih="$ih" 'BEGIN {
+    split(px, p, "x"); pw=p[1]; ph=p[2]
+    if (c < 1) c = 80; if (r < 1) r = 24
+    if (pw < 1) pw = c * 9; if (ph < 1) ph = r * 18
+    cw_px = pw / c; ch_px = ph / r
+    box_x = (x / sw) * pw; box_y = (y / sh) * ph
+    box_w = (w / sw) * pw; box_h = (h / sh) * ph
+    if (box_w < 1) box_w = 1; if (box_h < 1) box_h = 1
+    aspect = iw / ih; if (aspect < 0.05) aspect = box_w / box_h
+    if (box_w / box_h > aspect) { draw_h = box_h; draw_w = box_h * aspect } else { draw_w = box_w; draw_h = box_w / aspect }
+    ox = box_x + (box_w - draw_w) / 2; oy = box_y + (box_h - draw_h) / 2
+    cw = draw_w / cw_px; ch = draw_h / ch_px; cx = ox / cw_px; cy = oy / ch_px
+    if (cw < 1) cw = 1; if (ch < 1) ch = 1
+    if (cw > c) cw = c; if (ch > r) ch = r
+    if (cx + cw > c) cx = c - cw; if (cy + ch > r) cy = r - ch
+    if (cx < 0) cx = 0; if (cy < 0) cy = 0
+    printf "%dx%d@%dx%d", cw, ch, cx, cy
+  }')
+  "$kitten_bin" icat --stdin=no --align=left --loop=-1 --scale-up --image-id "$image_id" --place "$rect" "$5" || true
+  image_id=$((image_id + 1))
+  top=$(printf '%s' "$rect" | awk -F '[x@]' '{ print $4 + 0 }')
+  used=$(printf '%s' "$rect" | awk -F '[x@]' '{ print $2 + $4 }')
+  if [ "$top" -le 2 ]; then
+    next=$((used + 2))
+    [ "$next" -gt "$prompt_row" ] && prompt_row=$next
+  fi
+}
+"#
+    .to_string()
+}
+
+fn pane_script(images: &[OverlayImage], pane: usize, stage_w: f64, stage_h: f64) -> String {
+    let mut script = String::from("#!/bin/sh\n");
+    script.push_str(&pane_body(images, pane, stage_w, stage_h));
+    script
+}
+
+fn pane_body(images: &[OverlayImage], pane: usize, stage_w: f64, stage_h: f64) -> String {
+    let slice = stage_w / 2.0;
+    let origin = slice * pane as f64;
+    let mut script = geometry_prelude(stage_w, stage_h);
+    script.push_str(&format!("slice={slice}\n"));
+    script.push_str(&place_function());
+    script.push_str(&format!("image_id={}\n", pane * 10 + 1));
+    for image in images {
+        let center = image.placement.x + image.placement.w / 2.0;
+        if center < origin || center >= origin + slice {
+            continue;
+        }
+        let local_x = (image.placement.x - origin).max(0.0);
+        script.push_str(&format!(
+            "place {local_x} {y} {w} {h} {}\n",
+            shell_quote(&image.path),
+            y = image.placement.y.max(0.0),
+            w = image.placement.w.max(1.0),
+            h = image.placement.h.max(1.0),
+        ));
+    }
+    script.push_str("printf '\\033[%s;1H' \"$prompt_row\"\nexec /bin/zsh -l\n");
+    script
+}
+
+fn pane_path(root: &Path, pane: usize) -> String {
+    root.join(format!("builder-pane-{pane}")).display().to_string()
+}
+
+fn two_panes(_spec: &OverlaySpec, root: &Path) -> String {
+    format!(
+        "new_tab custom\nlayout splits\nlaunch --cwd=current --title=custom {}\nlaunch --location=vsplit --bias=50 --cwd=current --title=custom {}\n",
+        pane_path(root, 0),
+        pane_path(root, 1),
+    )
+}
+
 fn session(spec: &OverlaySpec, root: &Path) -> String {
     let stage_w = if spec.stage_width >= 80.0 { spec.stage_width } else { 740.0 };
     let stage_h = if spec.stage_height >= 80.0 { spec.stage_height } else { 420.0 };
+    if spec.widgets.is_empty() && !spec.images.is_empty() {
+        return two_panes(spec, root);
+    }
     let shell = shell_command(root);
     let mut lines = vec!["new_tab overlays".to_string(), "layout splits".to_string()];
     let mut placed = Vec::new();
-    for (index, image) in spec.images.iter().filter(|image| image.placement.pinned).enumerate() {
-        placed.push(Placed {
-            x: image.placement.x,
-            y: image.placement.y,
-            w: image.placement.w,
-            h: image.placement.h,
-            edge: image.placement.edge.clone(),
-            title: format!("ov{index}"),
-            command: image_command(&image.path),
-            aspect: image_aspect(&image.path),
-        });
-    }
-    let image_count = placed.len();
     for (index, widget) in spec.widgets.iter().filter(|widget| widget.placement.pinned).enumerate() {
         placed.push(Placed {
             x: widget.placement.x,
@@ -363,7 +428,7 @@ fn session(spec: &OverlaySpec, root: &Path) -> String {
             w: widget.placement.w,
             h: widget.placement.h,
             edge: widget.placement.edge.clone(),
-            title: format!("ov{}", image_count + index),
+            title: format!("ov{index}"),
             command: widget_command(root, widget),
             aspect: None,
         });
@@ -484,8 +549,15 @@ pub fn apply_overlays(spec: OverlaySpec) -> Result<OverlayApplyResult, String> {
     fs::create_dir_all(root.join("sessions")).map_err(explain)?;
     let json = serde_json::to_string_pretty(&spec).map_err(explain)?;
     fs::write(root.join("builder-overlays.json"), json).map_err(explain)?;
-    write_executable(&root.join("builder-shell"), &image_script(&spec.images))?;
+    write_executable(
+        &root.join("builder-shell"),
+        &image_script(&spec.images, spec.stage_width, spec.stage_height),
+    )?;
     write_executable(&root.join("builder-widget"), widget_script())?;
+    let stage_w = if spec.stage_width >= 80.0 { spec.stage_width } else { 740.0 };
+    let stage_h = if spec.stage_height >= 80.0 { spec.stage_height } else { 420.0 };
+    write_executable(&root.join("builder-pane-0"), &pane_script(&spec.images, 0, stage_w, stage_h))?;
+    write_executable(&root.join("builder-pane-1"), &pane_script(&spec.images, 1, stage_w, stage_h))?;
     fs::write(
         root.join("sessions/overlays.session"),
         session(&spec, &root),
@@ -541,14 +613,14 @@ mod tests {
         let lines: Vec<_> = text.lines().collect();
         assert_eq!(lines[0], "new_tab overlays");
         assert_eq!(lines[1], "layout splits");
-        assert!(lines[2].starts_with("launch --title=ov0 "));
-        assert!(lines[2].contains("--fit=both"));
-        assert!(!lines[2].contains("#141118"));
-        assert!(lines[2].contains("bocchi-the-rock-bocchi.gif"));
-        assert!(!lines[2].contains("--location="));
+        assert!(!text.contains("bocchi-the-rock-bocchi.gif"));
+        let script = image_script(&spec.images, spec.stage_width, spec.stage_height);
+        assert!(script.contains("stty size"));
+        assert!(!script.contains("unicode-placeholder"));
+        assert!(script.contains("bocchi-the-rock-bocchi.gif"));
         let top_h = 77.5_f64;
         let shell_bias = percent(420.0 - top_h, 420.0);
-        assert!(lines[3].starts_with(&format!("launch --location=hsplit --bias={shell_bias} --cwd=current --title=main ")));
+        assert!(text.contains(&format!("--location=hsplit --bias={shell_bias}")));
         let splits: Vec<_> = lines.iter().filter(|line| line.starts_with("launch --location=")).collect();
         assert_eq!(splits.iter().filter(|line| line.contains("hsplit")).count(), 1);
         let memory = lines.iter().position(|line| line.contains("'memory'")).unwrap();
@@ -557,5 +629,40 @@ mod tests {
         assert!(lines[memory].contains("--location=vsplit"));
         assert!(lines[cpu].contains("--location=vsplit"));
         assert_eq!(lines.last().copied(), Some("focus_matching_window title:main"));
+    }
+
+    #[test]
+    fn each_pane_places_only_its_own_image_after_the_real_size() {
+        let spec = OverlaySpec {
+            images: vec![
+                OverlayImage {
+                    id: "left".into(),
+                    path: "/tmp/left.gif".into(),
+                    placement: Placement { x: 0.0, y: 0.0, w: 120.0, h: 56.0, pinned: false, edge: "left".into() },
+                },
+                OverlayImage {
+                    id: "right".into(),
+                    path: "/tmp/cat.gif".into(),
+                    placement: Placement { x: 500.0, y: 300.0, w: 90.0, h: 56.0, pinned: false, edge: "right".into() },
+                },
+            ],
+            widgets: vec![],
+            stage_width: 666.0,
+            stage_height: 409.0,
+            background: String::new(),
+        };
+        let text = session(&spec, Path::new("/Users/appfactory/.config/kitty"));
+        assert_eq!(text.lines().count(), 4);
+        assert!(!text.contains('\''));
+        assert!(text.contains("builder-pane-0"));
+        assert!(text.contains("builder-pane-1"));
+        let left = pane_script(&spec.images, 0, spec.stage_width, spec.stage_height);
+        let right = pane_script(&spec.images, 1, spec.stage_width, spec.stage_height);
+        assert!(left.contains("/tmp/left.gif"));
+        assert!(!left.contains("/tmp/cat.gif"));
+        assert!(right.contains("/tmp/cat.gif"));
+        assert!(!right.contains("/tmp/left.gif"));
+        assert!(left.contains("stty size"));
+        assert!(!text.contains("unicode-placeholder"));
     }
 }

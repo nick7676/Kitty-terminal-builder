@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { activeLayout } from '@/entities/appearance'
 import { useOverlays } from '@/entities/overlay'
 import { envValue, removeEnv, removeValue, setValue, upsertEnv, useWorkspace, valuesOf } from '@/entities/workspace'
 import { backend, isTauri } from '@/shared/api'
@@ -39,12 +40,20 @@ export function useOverlayRuntime() {
             return
           }
           const shell = valuesOf(document, 'shell').at(-1) ?? ''
-          if (!shell.includes('builder-shell')) {
+          const floatImages = widgets.length === 0 && persistentImages.length > 0
+          if (floatImages && shell.includes('builder-shell')) {
+            const original = envValue(document, 'KITTY_BUILDER_SHELL') || '/bin/zsh'
+            setValue(document, 'shell', original)
+          } else if (!floatImages && !shell.includes('builder-shell')) {
             const original = envValue(document, 'KITTY_BUILDER_SHELL') || shell.trim().split(/\s+/)[0] || '/bin/zsh'
             upsertEnv(document, 'KITTY_BUILDER_SHELL', original)
             setValue(document, 'shell', `"${result.shellPath.replaceAll('"', '')}"`)
           }
-          setValue(document, 'startup_session', result.sessionPath)
+          if (widgets.length > 0 || persistentImages.length > 0) setValue(document, 'startup_session', result.sessionPath)
+          else if ((valuesOf(document, 'startup_session').at(-1) ?? '').includes('overlays.session')) {
+            const layout = activeLayout(valuesOf(document, 'enabled_layouts').at(-1) ?? 'custom')
+            setValue(document, 'startup_session', `sessions/${layout}.session`)
+          }
         })
       }).catch((error) => toast(String(error)))
     }, 250)

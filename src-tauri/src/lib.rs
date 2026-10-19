@@ -1,3 +1,4 @@
+mod chroma;
 mod command;
 mod config;
 mod image;
@@ -32,6 +33,7 @@ pub fn run() {
             kitty::get_option_registry,
             kitty::reload_kitty,
             image::preview_image,
+            chroma::remove_greenscreen,
             overlay::apply_overlays,
             packages::detect_commands,
             packages::list_managed_packages,

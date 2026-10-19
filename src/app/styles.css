@@ -250,9 +250,14 @@ h2 { font-size: 16px; }
 .tab-badges i { padding: 2px 8px; border-radius: 999px; color: #1a1d2a; font-size: 11px; font-style: normal; }
 .term-canvas { position: relative; display: flex; flex: 1; min-height: 340px; overflow: hidden; background-color: transparent; background-position: center; background-repeat: no-repeat; }
 .terminal-scroll-layer { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; overflow: auto; transition: padding .18s ease; }
-.overlay-frame { position: absolute; z-index: 5; overflow: hidden; border: 1px solid #ffffff30; border-radius: 9px; background: #141118; box-shadow: 0 8px 24px #0008; cursor: move; touch-action: none; }
-.overlay-frame.pinned { z-index: 7; border-color: #c38bec88; }
-.overlay-frame.selected-overlay { box-shadow: 0 0 0 2px #c38bec, 0 8px 24px #0008; }
+.overlay-frame { position: absolute; z-index: 20; overflow: hidden; border: 1px solid transparent; border-radius: 9px; background: transparent; box-shadow: none; cursor: move; touch-action: none; }
+.overlay-frame:hover, .overlay-frame.selected-overlay { border-color: #ffffff55; }
+.overlay-frame:has(.terminal-widget) { background: #141118; box-shadow: 0 8px 24px #0008; }
+.overlay-frame.pinned { z-index: 22; }
+.overlay-frame.pinned:hover, .overlay-frame.pinned.selected-overlay { border-color: #c38bec88; }
+.overlay-frame.selected-overlay { box-shadow: 0 0 0 2px #c38bec; }
+.overlay-pin, .overlay-resize { opacity: 0; }
+.overlay-frame:hover .overlay-pin, .overlay-frame:hover .overlay-resize, .overlay-frame.selected-overlay .overlay-pin, .overlay-frame.selected-overlay .overlay-resize { opacity: 1; }
 .overlay-pin { position: absolute; top: 5px; right: 5px; z-index: 3; width: 24px; height: 24px; padding: 0; border: 1px solid #ffffff2b; border-radius: 50%; background: #151119cc; color: #e5c9f5; cursor: pointer; }
 .overlay-resize { position: absolute; right: 0; bottom: 0; z-index: 3; width: 18px; height: 18px; border-radius: 6px 0 0; background: #c38bec; cursor: nwse-resize; }
 .overlay-image { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }

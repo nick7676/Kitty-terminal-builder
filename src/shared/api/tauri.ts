@@ -49,6 +49,17 @@ export const backend = {
     return typeof selected === 'string' ? selected : null
   },
   imagePreview: (path: string) => invoke<string>('preview_image', { path }),
+  removeGreenscreen: (path: string, mode: 'background' | 'overlay') => invoke<string>('remove_greenscreen', { path, mode }),
+  async pickGreenscreen(): Promise<string | null> {
+    if (!isTauri()) return null
+    const dialog = await import('@tauri-apps/plugin-dialog')
+    const selected = await dialog.open({
+      title: 'Greenscreen GIF or video',
+      multiple: false,
+      filters: [{ name: 'Animation', extensions: ['gif', 'mp4', 'mov', 'webm', 'mkv'] }],
+    })
+    return typeof selected === 'string' ? selected : null
+  },
   applyOverlays: (spec: unknown) => invoke<{ shellPath: string; sessionPath: string }>('apply_overlays', { spec }),
   packageAction: (manager: string, action: string, packageName: string) =>
     invoke<CommandResult>('run_package_action', { manager, action, package: packageName }),

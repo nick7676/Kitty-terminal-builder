@@ -184,6 +184,7 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
   const art = Boolean(imageUrl)
   const caret = `caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`
   const insets = overlayInsets([...overlayImages.map((item) => item.placement), ...terminalWidgets.map((item) => item.placement)])
+  const headerBand = overlayImages.filter((image) => !image.placement.pinned && image.placement.y < 48).reduce((max, image) => Math.max(max, image.placement.y + image.placement.h), 0)
   const stageRef = useRef<HTMLDivElement>(null)
   const setStage = useOverlays((state) => state.setStage)
   useEffect(() => {
@@ -246,7 +247,7 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
           )}
           <div ref={stageRef} className="term-canvas overlay-stage" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
             <div className="term-wash" />
-            <div className="terminal-scroll-layer" style={{ paddingLeft: insets.left, paddingRight: insets.right, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+            <div className="terminal-scroll-layer" style={{ paddingLeft: insets.left, paddingRight: insets.right, paddingTop: Math.max(insets.top, headerBand), paddingBottom: insets.bottom }}>
               <SplitView node={tree} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} dots={ansi} />
               <OverlayLayers pinned={false} />
             </div>

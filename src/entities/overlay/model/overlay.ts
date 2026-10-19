@@ -87,6 +87,7 @@ interface OverlayState {
   savedWidgets: TerminalWidget[]
   layoutDirty: boolean
   addImage: (path: string, url?: string) => void
+  setImagePath: (id: string, path: string) => void
   removeImage: (id: string) => void
   addWidget: (kind: WidgetKind) => void
   removeWidget: (id: string) => void
@@ -126,6 +127,11 @@ export const useOverlays = create<OverlayState>((set) => ({
   addImage: (path, url = '') => set((state) => {
     const id = crypto.randomUUID()
     const images = [...state.images, { id, path, url, placement: placement(id, false) }]
+    persist(images, state.widgets, state.stageWidth, state.stageHeight)
+    return { images, layoutDirty: true }
+  }),
+  setImagePath: (id, path) => set((state) => {
+    const images = state.images.map((image) => image.id === id ? { ...image, path, url: '' } : image)
     persist(images, state.widgets, state.stageWidth, state.stageHeight)
     return { images, layoutDirty: true }
   }),

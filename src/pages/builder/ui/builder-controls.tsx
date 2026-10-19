@@ -95,20 +95,24 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
         <Field label="Background image">
           <div className="split-fields">
             <Button onClick={() => void images.chooseImage()}>Choose image</Button>
+            <Button onClick={() => void images.removeGreenscreen()}>Remove greenscreen</Button>
             <Button onClick={images.clearBackground}>Clear</Button>
           </div>
           <input className="input" value={images.imagePath.raw} placeholder="none" onChange={(event) => editValue('background_image', event.target.value)} />
           <Field label="Pane image">
             <div className="split-fields">
               <Button onClick={() => void images.choosePaneImage()}>Choose image</Button>
-              <span />
+              <Button onClick={() => void images.addKeyedImage()}>Remove greenscreen</Button>
             </div>
-            <p className="card-desc">PNG, JPEG, WebP or GIF. Every image can be moved, resized and pinned from the preview.</p>
+            <p className="card-desc">PNG, JPEG, WebP or GIF. Greenscreen GIFs become transparent and can be moved, resized and pinned from the preview.</p>
             <div className="overlay-list">
               {images.overlayImages.map((image, index) => (
                 <div className="overlay-list-item" key={image.id}>
                   <span>Image {index + 1}<small>{image.placement.pinned ? `Pinned ${image.placement.edge}` : 'Scrolls with content'}</small></span>
-                  <Button size="sm" onClick={() => images.removeImage(image.id)}>Remove</Button>
+                  <span className="split-fields">
+                    <Button size="sm" onClick={() => void images.keyExistingImage(image.id, image.path)}>Key</Button>
+                    <Button size="sm" onClick={() => images.removeImage(image.id)}>Remove</Button>
+                  </span>
                 </div>
               ))}
             </div>

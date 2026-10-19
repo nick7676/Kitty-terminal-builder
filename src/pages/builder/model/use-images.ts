@@ -12,6 +12,7 @@ export function useBuilderImages() {
   const toast = useWorkspace((state) => state.toast)
   const overlayImages = useOverlays((state) => state.images)
   const addImage = useOverlays((state) => state.addImage)
+  const setImagePath = useOverlays((state) => state.setImagePath)
   const removeImage = useOverlays((state) => state.removeImage)
   const imagePath = useOption('background_image', 'none')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -34,6 +35,52 @@ export function useBuilderImages() {
     return () => { cancel = true }
   }, [configuredImage])
 
+  const keyGreenscreen = async (mode: 'background' | 'overlay') => {
+    if (!isTauri()) {
+      toast('Removing a greenscreen requires the desktop app')
+      return ''
+    }
+    const selected = await backend.pickGreenscreen()
+    if (!selected) return ''
+    toast('Removing the backdrop…')
+    return backend.removeGreenscreen(selected, mode)
+  }
+  const removeGreenscreen = async () => {
+    try {
+      const keyed = await keyGreenscreen('background')
+      if (!keyed) return
+      editValue('background_image', kittyString(keyed))
+      editValue('background_image_layout', 'clamped')
+      editValue('background_tint', '0')
+      toast('Greenscreen removed. Save & reload, then open a new Kitty window.')
+    } catch (error) {
+      toast(String(error))
+    }
+  }
+  const addKeyedImage = async () => {
+    try {
+      const keyed = await keyGreenscreen('overlay')
+      if (!keyed) return
+      addImage(keyed)
+      toast('Movable image added. Drag it in the preview, then save.')
+    } catch (error) {
+      toast(String(error))
+    }
+  }
+  const keyExistingImage = async (id: string, path: string) => {
+    try {
+      if (!path.startsWith('/')) {
+        toast('This image has no file to key')
+        return
+      }
+      toast('Removing the backdrop…')
+      const keyed = await backend.removeGreenscreen(path, 'overlay')
+      setImagePath(id, keyed)
+      toast('Greenscreen removed from the movable image.')
+    } catch (error) {
+      toast(String(error))
+    }
+  }
   const chooseImage = async () => {
     try {
       if (!isTauri()) {
@@ -65,6 +112,9 @@ export function useBuilderImages() {
     fileRef,
     paneFileRef,
     chooseImage,
+    removeGreenscreen,
+    addKeyedImage,
+    keyExistingImage,
     choosePaneImage,
     clearBackground: () => { resetKeys(['background_image']); setLocalImage(''); setRemoteImage('') },
     removeImage,
