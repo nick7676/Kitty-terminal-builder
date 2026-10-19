@@ -1,6 +1,6 @@
 [package]
 name = "kitty-builder"
-version = "0.3.0"
+version = "0.4.0"
 description = "Visual configuration and integration manager for kitty"
 authors = ["Kitty Builder contributors"]
 license = "MIT"
@@ -24,5 +24,7 @@ log = "0.4"
 tauri = { version = "2.12.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 dirs = "6"
 walkdir = "2"

@@ -2,6 +2,7 @@ name: Desktop
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -25,3 +26,5 @@ jobs:
       - run: npm test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: npm run bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

@@ -14,6 +14,7 @@ Native desktop studio for [kitty](https://sw.kovidgoyal.net/kitty/), built with 
 - Complete official integrations catalog with allowlisted package-manager installs
 - Managed integration updates and safe removal
 - macOS and Linux support
+- In-app updates from GitHub releases. The header shows Update when a newer version is published.
 
 ## Stack
 

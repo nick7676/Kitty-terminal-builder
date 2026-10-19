@@ -1,6 +1,7 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
+import { UpdateButton } from '@/features/check-update'
 import { confirmAndSave } from '@/features/save-document'
 import { useWorkspace } from '@/entities/workspace'
 import { isTauri } from '@/shared/api'
@@ -75,6 +76,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {error ? <Pill tone="warning">Backend issue</Pill> : null}
           <Pill tone={status?.kittyInstalled ? 'success' : 'warning'}><i className="dot" />{status?.kittyInstalled ? (status.kittyVersion ?? 'kitty installed') : 'kitty not installed'}</Pill>
           <Pill>{status?.os ?? 'web'} · {status?.arch ?? 'preview'}</Pill>
+          <UpdateButton />
         </div>
       </header>
       <aside className="sidebar">
