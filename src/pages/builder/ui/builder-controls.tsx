@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import tabBarPy from '../../../../scripts/studio-tab-bar.py?raw'
 import {
-  ansiSlots, blinkChoices, cursorShapes, fontChoices, imageLayouts, presets, scenes, styleKeys, surfaceSlots, tabStyles, themeKeys, windowLayouts,
+  ansiSlots, blinkChoices, cursorShapes, fontChoices, imageLayouts, presets, scenes, styleKeys, surfaceSlots, tabStyles, themeKeys,
 } from '@/entities/appearance'
 import { isDirtyState, useWorkspace } from '@/entities/workspace'
 import { ColorField, useOption } from '@/features/edit-option'
 import { confirmDiscard, SaveActions } from '@/features/save-document'
 import { backend, isTauri } from '@/shared/api'
-import { Button, ChoiceGrid, Field, ImageFileInput, Notice, Panel, Segmented, SelectField, SliderField, TextField } from '@/shared/ui'
+import { Button, Field, ImageFileInput, Notice, Panel, Segmented, SelectField, SliderField, TextField } from '@/shared/ui'
 import { useBuilderImages } from '../model/use-images'
 import { useLayoutEditor } from '../model/use-layout'
 
@@ -84,12 +84,10 @@ export function BuilderControls({ layout, images }: { layout: ReturnType<typeof 
         </div>
       </Panel>
 
-      <Panel title="Layout">
-        <ChoiceGrid value={layout.layout} options={[...windowLayouts, 'custom']} onChange={layout.selectLayout} />
-        <p className="card-desc">Drag the dividers in the preview. Custom starts empty: select a pane, then split it.</p>
+      <Panel title="Terminals">
+        <p className="card-desc">Starts as one terminal. New adds another beside it. Drag the divider in the preview to resize.</p>
         <div className="split-fields">
-          <Button disabled={!layout.canSplit} onClick={layout.splitRight}>Split right</Button>
-          <Button disabled={!layout.canSplit} onClick={layout.splitDown}>Split down</Button>
+          <Button disabled={!layout.canAdd} onClick={layout.add}>New</Button>
           <Button disabled={!layout.canRemove} onClick={layout.remove}>Remove</Button>
         </div>
         <Field label="Background image">

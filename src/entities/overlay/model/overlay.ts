@@ -97,6 +97,8 @@ interface OverlayState {
   stageWidth: number
   stageHeight: number
   setStage: (width: number, height: number) => void
+  shellPath: string
+  setShellPath: (path: string) => void
   markLayoutSaved: () => void
   revertLayout: () => void
 }
@@ -124,6 +126,8 @@ export const useOverlays = create<OverlayState>((set) => ({
   layoutDirty: false,
   stageWidth: initial.stageWidth ?? 0,
   stageHeight: initial.stageHeight ?? 0,
+  shellPath: '',
+  setShellPath: (shellPath) => set({ shellPath }),
   addImage: (path, url = '') => set((state) => {
     const id = crypto.randomUUID()
     const images = [...state.images, { id, path, url, placement: placement(id, false) }]

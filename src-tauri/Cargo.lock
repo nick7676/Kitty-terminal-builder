@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "kitty-builder"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "dirs 6.0.0",
  "log",

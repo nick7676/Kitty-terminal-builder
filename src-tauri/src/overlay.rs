@@ -72,10 +72,10 @@ fn write_executable(path: &Path, content: &str) -> Result<(), String> {
 fn image_script(images: &[OverlayImage], stage_w: f64, stage_h: f64) -> String {
     let stage_w = if stage_w >= 80.0 { stage_w } else { 740.0 };
     let stage_h = if stage_h >= 80.0 { stage_h } else { 420.0 };
-    let mut script = String::from("#!/bin/sh\npane=${1:-0}\ncount=${2:-2}\n");
+    let mut script = String::from("#!/bin/sh\norigin_frac=${1:-0}\nwidth_frac=${2:-1}\n");
     script.push_str(&geometry_prelude(stage_w, stage_h));
-    script.push_str("slice=$(awk -v sw=\"$stage_w\" -v n=\"$count\" 'BEGIN { print sw / n }')\n");
-    script.push_str("origin=$(awk -v s=\"$slice\" -v p=\"$pane\" 'BEGIN { print s * p }')\n");
+    script.push_str("origin=$(awk -v sw=\"$stage_w\" -v f=\"$origin_frac\" 'BEGIN { print sw * f }')\n");
+    script.push_str("slice=$(awk -v sw=\"$stage_w\" -v f=\"$width_frac\" 'BEGIN { if (f < 0.05) f = 1; print sw * f }')\n");
     script.push_str(&place_function());
     for image in images {
         script.push_str(&format!(
@@ -369,55 +369,9 @@ fn place_function() -> String {
     .to_string()
 }
 
-fn pane_script(images: &[OverlayImage], pane: usize, stage_w: f64, stage_h: f64) -> String {
-    let mut script = String::from("#!/bin/sh\n");
-    script.push_str(&pane_body(images, pane, stage_w, stage_h));
-    script
-}
-
-fn pane_body(images: &[OverlayImage], pane: usize, stage_w: f64, stage_h: f64) -> String {
-    let slice = stage_w / 2.0;
-    let origin = slice * pane as f64;
-    let mut script = geometry_prelude(stage_w, stage_h);
-    script.push_str(&format!("slice={slice}\n"));
-    script.push_str(&place_function());
-    script.push_str(&format!("image_id={}\n", pane * 10 + 1));
-    for image in images {
-        let center = image.placement.x + image.placement.w / 2.0;
-        if center < origin || center >= origin + slice {
-            continue;
-        }
-        let local_x = (image.placement.x - origin).max(0.0);
-        script.push_str(&format!(
-            "place {local_x} {y} {w} {h} {}\n",
-            shell_quote(&image.path),
-            y = image.placement.y.max(0.0),
-            w = image.placement.w.max(1.0),
-            h = image.placement.h.max(1.0),
-        ));
-    }
-    script.push_str("printf '\\033[%s;1H' \"$prompt_row\"\nexec /bin/zsh -l\n");
-    script
-}
-
-fn pane_path(root: &Path, pane: usize) -> String {
-    root.join(format!("builder-pane-{pane}")).display().to_string()
-}
-
-fn two_panes(_spec: &OverlaySpec, root: &Path) -> String {
-    format!(
-        "new_tab custom\nlayout splits\nlaunch --cwd=current --title=custom {}\nlaunch --location=vsplit --bias=50 --cwd=current --title=custom {}\n",
-        pane_path(root, 0),
-        pane_path(root, 1),
-    )
-}
-
 fn session(spec: &OverlaySpec, root: &Path) -> String {
     let stage_w = if spec.stage_width >= 80.0 { spec.stage_width } else { 740.0 };
     let stage_h = if spec.stage_height >= 80.0 { spec.stage_height } else { 420.0 };
-    if spec.widgets.is_empty() && !spec.images.is_empty() {
-        return two_panes(spec, root);
-    }
     let shell = shell_command(root);
     let mut lines = vec!["new_tab overlays".to_string(), "layout splits".to_string()];
     let mut placed = Vec::new();
@@ -554,10 +508,6 @@ pub fn apply_overlays(spec: OverlaySpec) -> Result<OverlayApplyResult, String> {
         &image_script(&spec.images, spec.stage_width, spec.stage_height),
     )?;
     write_executable(&root.join("builder-widget"), widget_script())?;
-    let stage_w = if spec.stage_width >= 80.0 { spec.stage_width } else { 740.0 };
-    let stage_h = if spec.stage_height >= 80.0 { spec.stage_height } else { 420.0 };
-    write_executable(&root.join("builder-pane-0"), &pane_script(&spec.images, 0, stage_w, stage_h))?;
-    write_executable(&root.join("builder-pane-1"), &pane_script(&spec.images, 1, stage_w, stage_h))?;
     fs::write(
         root.join("sessions/overlays.session"),
         session(&spec, &root),
@@ -652,17 +602,12 @@ mod tests {
             background: String::new(),
         };
         let text = session(&spec, Path::new("/Users/appfactory/.config/kitty"));
-        assert_eq!(text.lines().count(), 4);
-        assert!(!text.contains('\''));
-        assert!(text.contains("builder-pane-0"));
-        assert!(text.contains("builder-pane-1"));
-        let left = pane_script(&spec.images, 0, spec.stage_width, spec.stage_height);
-        let right = pane_script(&spec.images, 1, spec.stage_width, spec.stage_height);
-        assert!(left.contains("/tmp/left.gif"));
-        assert!(!left.contains("/tmp/cat.gif"));
-        assert!(right.contains("/tmp/cat.gif"));
-        assert!(!right.contains("/tmp/left.gif"));
-        assert!(left.contains("stty size"));
-        assert!(!text.contains("unicode-placeholder"));
+        assert_eq!(text.lines().filter(|line| line.starts_with("launch")).count(), 1);
+        assert!(!text.contains("builder-pane-1"));
+        let script = image_script(&spec.images, spec.stage_width, spec.stage_height);
+        assert!(script.contains("origin_frac"));
+        assert!(script.contains("/tmp/left.gif"));
+        assert!(script.contains("/tmp/cat.gif"));
+        assert!(!script.contains("unicode-placeholder"));
     }
 }

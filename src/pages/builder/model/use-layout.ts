@@ -1,60 +1,62 @@
-import { useRef, useState } from 'react'
-import { activeLayout, cloneTree, enabledFor, firstPane, paneCount, presetTrees, removePane, sessionFor, setRatio, splitPane, type LayoutNode } from '@/entities/appearance'
-import { useWorkspace } from '@/entities/workspace'
-import { useOption } from '@/features/edit-option'
+import { useEffect, useRef, useState } from 'react'
+import { addPane, loadPanes, removePane, resizePair, sessionFor, type TerminalPane } from '@/entities/appearance'
+import { useOverlays } from '@/entities/overlay'
+import { useWorkspace, valuesOf } from '@/entities/workspace'
 import { backend, isTauri } from '@/shared/api'
 
 export function useLayoutEditor() {
   const editValue = useWorkspace((state) => state.editValue)
   const toast = useWorkspace((state) => state.toast)
-  const layouts = useOption('enabled_layouts', 'tall')
-  const layout = activeLayout(layouts.effective)
-  const [trees, setTrees] = useState<Record<string, LayoutNode>>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('kitty-builder-layouts') ?? '{}') as Record<string, LayoutNode>
-      return { ...Object.fromEntries(Object.entries(presetTrees).map(([key, value]) => [key, cloneTree(value)])), ...saved }
-    } catch {
-      return Object.fromEntries(Object.entries(presetTrees).map(([key, value]) => [key, cloneTree(value)]))
-    }
-  })
-  const [selectedPane, setSelectedPane] = useState('editor')
-  const tree = trees[layout] ?? cloneTree(presetTrees[layout] ?? presetTrees.custom)
-  const treeRef = useRef(tree)
-  const layoutRef = useRef(layout)
-  treeRef.current = tree
-  layoutRef.current = layout
-  const remember = (next: Record<string, LayoutNode>) => {
-    setTrees(next)
-    localStorage.setItem('kitty-builder-layouts', JSON.stringify(next))
+  const loading = useWorkspace((state) => state.loading)
+  const shellPath = useOverlays((state) => state.shellPath)
+  const widgets = useOverlays((state) => state.widgets.length)
+  const [panes, setPanes] = useState<TerminalPane[]>(() => loadPanes(localStorage.getItem('kitty-builder-panes')))
+  const [selectedPane, setSelectedPane] = useState(() => panes[0]?.id ?? 't1')
+  const panesRef = useRef(panes)
+  panesRef.current = panes
+
+  const remember = (next: TerminalPane[]) => {
+    panesRef.current = next
+    setPanes(next)
+    localStorage.setItem('kitty-builder-panes', JSON.stringify(next))
   }
-  const commitLayout = async (mode: string, nextTree: LayoutNode) => {
-    editValue('enabled_layouts', enabledFor(mode, nextTree))
-    editValue('startup_session', `sessions/${mode}.session`)
+
+  const commit = async (next: TerminalPane[], shell: string) => {
+    if (widgets > 0 || useWorkspace.getState().loading) return
+    const state = useWorkspace.getState()
+    const session = valuesOf(state.document, 'startup_session').at(-1) ?? ''
+    const layouts = valuesOf(state.document, 'enabled_layouts').at(-1) ?? ''
+    if (session !== 'sessions/layout.session') editValue('startup_session', 'sessions/layout.session')
+    if (!layouts.split(/[\s,]+/)[0]?.startsWith('splits')) editValue('enabled_layouts', 'splits')
     if (!isTauri()) return
-    try { await backend.write(`sessions/${mode}.session`, sessionFor(nextTree, mode)) } catch (error) { toast(String(error)) }
+    try { await backend.write('sessions/layout.session', sessionFor(next, shell)) } catch (error) { toast(String(error)) }
   }
-  const updateTree = (next: LayoutNode, commit = false) => {
-    treeRef.current = next
-    remember({ ...trees, [layoutRef.current]: next })
-    if (commit) void commitLayout(layoutRef.current, next)
-  }
+
+  useEffect(() => {
+    if (loading) return
+    void commit(panesRef.current, shellPath)
+  }, [loading, shellPath, widgets])
+
   return {
-    layout,
-    tree,
+    panes,
     selectedPane,
     setSelectedPane,
-    canSplit: Boolean(selectedPane),
-    canRemove: Boolean(selectedPane) && paneCount(tree) >= 2,
-    splitRight: () => updateTree(splitPane(tree, selectedPane, 'x'), true),
-    splitDown: () => updateTree(splitPane(tree, selectedPane, 'y'), true),
-    remove: () => updateTree(removePane(tree, selectedPane), true),
-    selectLayout: (item: string) => {
-      const next = trees[item] ?? cloneTree(presetTrees[item] ?? presetTrees.custom)
-      setSelectedPane(firstPane(next))
-      remember({ ...trees, [item]: next })
-      void commitLayout(item, next)
+    canAdd: panes.length < 6,
+    canRemove: panes.length > 1,
+    add: () => {
+      const next = addPane(panes)
+      const added = next.at(-1)
+      if (added) setSelectedPane(added.id)
+      remember(next)
+      void commit(next, shellPath)
     },
-    onRatio: (id: string, ratio: number) => updateTree(setRatio(treeRef.current, id, ratio)),
-    onCommit: () => { void commitLayout(layoutRef.current, treeRef.current) },
+    remove: () => {
+      const next = removePane(panes, selectedPane)
+      setSelectedPane(next[0]?.id ?? 't1')
+      remember(next)
+      void commit(next, shellPath)
+    },
+    onResize: (index: number, fraction: number) => remember(resizePair(panesRef.current, index, fraction)),
+    onCommit: () => { void commit(panesRef.current, shellPath) },
   }
 }

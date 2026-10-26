@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { ansiSlots, cssColor, presets } from '@/entities/appearance'
-import type { LayoutNode } from '@/entities/appearance'
+import { Fragment, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { ansiSlots, cssColor, presets, type TerminalPane } from '@/entities/appearance'
 import { overlayInsets, useOverlays, type TerminalWidget } from '@/entities/overlay'
 import { useWorkspace, valuesOf } from '@/entities/workspace'
 import { useOption } from '@/features/edit-option'
@@ -12,52 +11,11 @@ function imageFit(layout: string) {
   return 'cover'
 }
 
-function EditorPane({ caret }: { caret: string }) {
-  const lines = [
-    ['c-magenta', 'set -gx EDITOR nvim'],
-    ['c-cyan', 'set fish_color_command brcyan'],
-    ['c-dim', '# greeting pictures via kitty icat'],
-    ['', 'function fish_greeting'],
-    ['c-yellow', '  kitty icat --align=left ~/pictures'],
-    ['', 'end'],
-  ]
-  return (
-    <section className="pane pane-main editor-mock">
-      {lines.map(([tone, text], index) => <p key={text}><span className="ln">{index + 1}</span><span className={tone}>{text}</span></p>)}
-      <p className="prompt-line"><span className="c-green">~/config</span> fish<span className={caret} /></p>
-    </section>
-  )
-}
-
-function PicturePane() {
-  const count = useOverlays((state) => state.images.length)
-  return <section className="pane"><p className="c-dim">{count ? `${count} image overlay${count === 1 ? '' : 's'}` : '$'}</p></section>
-}
-
-function PromptPane({ title }: { title: string }) {
+function PromptPane({ title, caret }: { title: string; caret: string }) {
   return (
     <section className="pane">
       <p className="c-cyan">{title}</p>
-      <p><span className="c-green">$</span> <span className="c-dim">ready</span></p>
-    </section>
-  )
-}
-
-function FetchPane({ dots, caret }: { dots: { key: string; effective: string }[]; caret: string }) {
-  const rows = [
-    ['c-red', 'os', 'this machine'],
-    ['c-green', 'wm', 'kitty'],
-    ['c-yellow', 'font', 'monospace'],
-    ['c-blue', 'term', 'xterm-kitty'],
-  ]
-  return (
-    <section className="pane fetch">
-      <div>
-        <p><b>builder</b><span className="c-dim">@kitty</span></p>
-        {rows.map(([tone, label, value]) => <p key={label}><span className={tone}>{label}</span> {value}</p>)}
-        <div className="term-palette">{dots.slice(0, 8).map((dot) => <i key={dot.key} style={{ background: cssColor(dot.effective, '#888') }} />)}</div>
-        <p className="prompt-line"><span className="c-cyan">~</span> $<span className={caret} /></p>
-      </div>
+      <p className="prompt-line"><span className="c-green">$</span> <span className="c-dim">ready</span><span className={caret} /></p>
     </section>
   )
 }
@@ -95,28 +53,25 @@ function OverlayLayers({ pinned }: { pinned: boolean }) {
   )
 }
 
-function SplitView({ node, selected, onSelect, onRatio, onCommit, caret, dots }: {
-  node: LayoutNode
+function PaneRow({ panes, selected, onSelect, onResize, onCommit, caret }: {
+  panes: TerminalPane[]
   selected: string
   onSelect: (id: string) => void
-  onRatio: (id: string, ratio: number) => void
+  onResize: (index: number, fraction: number) => void
   onCommit: () => void
   caret: string
-  dots: { key: string; effective: string }[]
 }) {
-  if (node.kind === 'pane') {
-    const body = node.label === 'editor' ? <EditorPane caret={caret} /> : node.label === 'image' ? <PicturePane /> : node.label === 'fetch' ? <FetchPane dots={dots} caret={caret} /> : <PromptPane title={node.label} />
-    return <div className={`pane-wrap ${selected === node.id ? 'selected' : ''}`} onClick={() => onSelect(node.id)}>{body}</div>
-  }
-  const start = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const start = (event: ReactPointerEvent<HTMLDivElement>, index: number) => {
     event.preventDefault()
     event.stopPropagation()
-    const bounds = event.currentTarget.parentElement?.getBoundingClientRect()
-    if (!bounds) return
-    const move = (pointer: PointerEvent) => {
-      const raw = node.axis === 'x' ? (pointer.clientX - bounds.left) / bounds.width : (pointer.clientY - bounds.top) / bounds.height
-      onRatio(node.id, Math.min(0.85, Math.max(0.15, raw)))
-    }
+    const row = event.currentTarget.parentElement
+    const slots = row ? [...row.querySelectorAll<HTMLElement>('.split-slot')] : []
+    const left = slots[index]?.getBoundingClientRect()
+    const right = slots[index + 1]?.getBoundingClientRect()
+    if (!left || !right) return
+    const origin = left.left
+    const width = right.right - origin
+    const move = (pointer: PointerEvent) => onResize(index, (pointer.clientX - origin) / width)
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
@@ -126,24 +81,27 @@ function SplitView({ node, selected, onSelect, onRatio, onCommit, caret, dots }:
     window.addEventListener('pointerup', stop)
   }
   return (
-    <div className={`split axis-${node.axis}`}>
-      <div className="split-slot" style={{ flexBasis: `${node.ratio * 100}%` }}>
-        <SplitView node={node.first} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} dots={dots} />
-      </div>
-      <div className={`split-handle ${node.axis}`} onPointerDown={start} />
-      <div className="split-slot grow">
-        <SplitView node={node.second} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} dots={dots} />
-      </div>
+    <div className="split axis-x">
+      {panes.map((pane, index) => (
+        <Fragment key={pane.id}>
+          <div className="split-slot" style={{ flex: `${pane.weight} 1 0` }}>
+            <div className={`pane-wrap ${selected === pane.id ? 'selected' : ''}`} onClick={() => onSelect(pane.id)}>
+              <PromptPane title={panes.length > 1 ? `shell ${index + 1}` : 'shell'} caret={caret} />
+            </div>
+          </div>
+          {index < panes.length - 1 ? <div className="split-handle x" onPointerDown={(event) => start(event, index)} /> : null}
+        </Fragment>
+      ))}
     </div>
   )
 }
 
-export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, onCommit }: {
+export function TerminalPreview({ imageUrl, panes, selected, onSelect, onResize, onCommit }: {
   imageUrl: string
-  tree: LayoutNode
+  panes: TerminalPane[]
   selected: string
   onSelect: (id: string) => void
-  onRatio: (id: string, ratio: number) => void
+  onResize: (index: number, fraction: number) => void
   onCommit: () => void
 }) {
   const background = useOption('background', '#000000')
@@ -179,7 +137,7 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
   })
   const color = (slot: string, fallback: string) => cssColor(ansi.find((item) => item.key === slot)?.effective, fallback)
   const fontSize = Math.min(18, Math.max(11, Number.parseFloat(size.effective) || 13))
-  const hiddenTabs = tabStyle.effective === 'hidden' || (tree.kind === 'pane' && tree.label === 'fetch' && tabStyle.effective !== 'custom')
+  const hiddenTabs = tabStyle.effective === 'hidden'
   const textTabs = tabStyle.effective === 'custom' || tabStyle.effective === 'fade' || tabStyle.effective === 'separator'
   const art = Boolean(imageUrl)
   const caret = `caret shape-${shape.effective} ${blink.effective === '0' ? 'still' : ''}`
@@ -248,7 +206,7 @@ export function TerminalPreview({ imageUrl, tree, selected, onSelect, onRatio, o
           <div ref={stageRef} className="term-canvas overlay-stage" style={imageUrl ? { backgroundImage: `url("${imageUrl}")` } : undefined}>
             <div className="term-wash" />
             <div className="terminal-scroll-layer" style={{ paddingLeft: insets.left, paddingRight: insets.right, paddingTop: Math.max(insets.top, headerBand), paddingBottom: insets.bottom }}>
-              <SplitView node={tree} selected={selected} onSelect={onSelect} onRatio={onRatio} onCommit={onCommit} caret={caret} dots={ansi} />
+              <PaneRow panes={panes} selected={selected} onSelect={onSelect} onResize={onResize} onCommit={onCommit} caret={caret} />
               <OverlayLayers pinned={false} />
             </div>
             <OverlayLayers pinned />
