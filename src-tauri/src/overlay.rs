@@ -308,21 +308,17 @@ stable=0
 i=0
 cols=80
 rows=24
-px=800x600
-while [ "$i" -lt 40 ]; do
+while [ "$i" -lt 30 ]; do
   size=$(stty size 2>/dev/null || echo "24 80")
   rows=${{size%% *}}
   cols=${{size##* }}
-  px=$("$kitten_bin" icat --print-window-size 2>/dev/null || echo 800x600)
-  now="$cols $rows $px"
-  sane=$(awk -v c="$cols" -v r="$rows" -v px="$px" 'BEGIN {{ split(px,p,"x"); if (c<1 || r<1) {{ print 0; exit }} cw=p[1]/c; ch=p[2]/r; if (cw>=4 && cw<=40 && ch>=8 && ch<=48) print 1; else print 0 }}')
-  if [ "$sane" = 1 ] && [ "$now" = "$prev" ]; then
+  if [ "$size" = "$prev" ] && [ "$i" -gt 6 ]; then
     stable=$((stable+1))
-    [ "$stable" -ge 3 ] && break
+    [ "$stable" -ge 2 ] && break
   else
     stable=0
   fi
-  prev=$now
+  prev=$size
   i=$((i+1))
   sleep 0.05
 done
@@ -338,25 +334,22 @@ fn place_function() -> String {
   ih=$(sips -g pixelHeight "$5" 2>/dev/null | awk '/pixelHeight/ { print $2 }')
   [ -n "$iw" ] || iw=1
   [ -n "$ih" ] || ih=1
-  rect=$(awk -v x="$1" -v y="$2" -v w="$3" -v h="$4" -v sw="$slice" -v sh="$stage_h" -v c="$cols" -v r="$rows" -v px="$px" -v iw="$iw" -v ih="$ih" 'BEGIN {
-    split(px, p, "x"); pw=p[1]; ph=p[2]
-    if (c < 1) c = 80; if (r < 1) r = 24
-    if (pw < 1) pw = c * 9; if (ph < 1) ph = r * 18
-    cw_px = pw / c; ch_px = ph / r
-    box_x = (x / sw) * pw; box_y = (y / sh) * ph
-    box_w = (w / sw) * pw; box_h = (h / sh) * ph
-    if (box_w < 1) box_w = 1; if (box_h < 1) box_h = 1
-    aspect = iw / ih; if (aspect < 0.05) aspect = box_w / box_h
-    if (box_w / box_h > aspect) { draw_h = box_h; draw_w = box_h * aspect } else { draw_w = box_w; draw_h = box_w / aspect }
-    ox = box_x + (box_w - draw_w) / 2; oy = box_y + (box_h - draw_h) / 2
-    cw = draw_w / cw_px; ch = draw_h / ch_px; cx = ox / cw_px; cy = oy / ch_px
-    if (cw < 1) cw = 1; if (ch < 1) ch = 1
-    if (cw > c) cw = c; if (ch > r) ch = r
-    if (cx + cw > c) cx = c - cw; if (cy + ch > r) cy = r - ch
+  rect=$(awk -v x="$1" -v y="$2" -v w="$3" -v h="$4" -v sw="$slice" -v sh="$stage_h" -v c="$cols" -v r="$rows" -v iw="$iw" -v ih="$ih" 'BEGIN {
+    if (sw < 1) sw = 1; if (sh < 1) sh = 1
+    if (c < 2) c = 80; if (r < 2) r = 24
+    cw = (w / sw) * c; ch = (h / sh) * r
+    if (iw > 0 && ih > 0 && cw > 0) ch = cw * 0.5 * (ih / iw)
+    if (cw < 2) cw = 2; if (ch < 1) ch = 1
+    if (cw > c - 1) { s = (c - 1) / cw; cw = c - 1; ch *= s }
+    if (ch > r * 0.4) { s = (r * 0.4) / ch; ch *= s; cw *= s }
+    cx = (x / sw) * c; cy = (y / sh) * r
+    if (cx < 0) cx = 0; if (cy < 0) cy = 0
+    if (cx + cw > c) cx = c - cw
+    if (cy + ch > r) cy = r - ch
     if (cx < 0) cx = 0; if (cy < 0) cy = 0
     printf "%dx%d@%dx%d", cw, ch, cx, cy
   }')
-  "$kitten_bin" icat --stdin=no --align=left --loop=-1 --scale-up --image-id "$image_id" --place "$rect" "$5" || true
+  "$kitten_bin" icat --stdin=no --align=left --loop=-1 --unicode-placeholder --image-id "$image_id" --place "$rect" "$5" || true
   image_id=$((image_id + 1))
   top=$(printf '%s' "$rect" | awk -F '[x@]' '{ print $4 + 0 }')
   used=$(printf '%s' "$rect" | awk -F '[x@]' '{ print $2 + $4 }')
@@ -566,7 +559,7 @@ mod tests {
         assert!(!text.contains("bocchi-the-rock-bocchi.gif"));
         let script = image_script(&spec.images, spec.stage_width, spec.stage_height);
         assert!(script.contains("stty size"));
-        assert!(!script.contains("unicode-placeholder"));
+        assert!(script.contains("unicode-placeholder"));
         assert!(script.contains("bocchi-the-rock-bocchi.gif"));
         let top_h = 77.5_f64;
         let shell_bias = percent(420.0 - top_h, 420.0);
@@ -608,6 +601,6 @@ mod tests {
         assert!(script.contains("origin_frac"));
         assert!(script.contains("/tmp/left.gif"));
         assert!(script.contains("/tmp/cat.gif"));
-        assert!(!script.contains("unicode-placeholder"));
+        assert!(script.contains("unicode-placeholder"));
     }
 }

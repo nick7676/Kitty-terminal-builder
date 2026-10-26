@@ -28,6 +28,8 @@ export function useLayoutEditor() {
     const layouts = valuesOf(state.document, 'enabled_layouts').at(-1) ?? ''
     if (session !== 'sessions/layout.session') editValue('startup_session', 'sessions/layout.session')
     if (!layouts.split(/[\s,]+/)[0]?.startsWith('splits')) editValue('enabled_layouts', 'splits')
+    const border = valuesOf(state.document, 'window_border_width').at(-1) ?? ''
+    if (next.length > 1 && !(Number(border) > 0)) editValue('window_border_width', '1')
     if (!isTauri()) return
     try { await backend.write('sessions/layout.session', sessionFor(next, shell)) } catch (error) { toast(String(error)) }
   }
